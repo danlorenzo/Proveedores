@@ -1,0 +1,83 @@
+@media (max-width: 767.98px) {
+    header > nav {
+        display: grid !important;
+        grid-template-columns: auto minmax(0, 1fr) auto !important;
+        align-items: center;
+        gap: .5rem !important;
+    }
+
+    header > nav > a:first-child {
+        grid-column: 1;
+        justify-self: start;
+        min-width: 0;
+    }
+
+    header > nav > h1,
+    header > nav > h1.h4 {
+        display: block !important;
+        grid-column: 2;
+        justify-self: center;
+        max-width: 100%;
+        min-width: 0;
+        margin: 0;
+        text-align: center;
+        white-space: normal;
+        color: #c62828 !important;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-size: clamp(1rem, 3.8vw, 1.3rem);
+        font-weight: 700;
+        letter-spacing: .015em;
+        line-height: 1.05;
+        text-shadow: 0 2px 0 rgb(167 25 32 / 10%);
+    }
+
+    header > nav > a:last-child,
+    header > nav > form:last-child,
+    header > nav > .account-menu {
+        grid-column: 3;
+        justify-self: end;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .topbar {
+        height: auto !important;
+        min-height: 82px;
+    }
+
+    .topbar > nav {
+        height: auto !important;
+        min-height: 82px;
+    }
+
+    .topbar > nav > h1 {
+        display: block !important;
+    }
+
+    .topbar .page-title {
+        position: static !important;
+        left: auto !important;
+        transform: none !important;
+        max-width: 100%;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: #c62828 !important;
+        font-size: clamp(1rem, 3.8vw, 1.3rem);
+        font-weight: 700;
+        letter-spacing: .015em;
+        white-space: normal !important;
+        text-align: center;
+        line-height: 1.05;
+        text-shadow: 0 2px 0 rgb(167 25 32 / 10%);
+    }
+
+    .topbar .account-toggle {
+        width: auto;
+        height: auto;
+        padding: .375rem .75rem;
+    }
+
+    .topbar .account-toggle > .text-start,
+    .topbar .account-toggle::after {
+        display: none !important;
+    }
+}

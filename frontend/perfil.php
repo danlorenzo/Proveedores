@@ -73,6 +73,8 @@ $perPage = 10;
 $page = isset($_GET['page']) && is_scalar($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
 $totalRecords = 0;
 $totalPages = 1;
+$providerFlash = $_SESSION['proveedor_flash'] ?? '';
+unset($_SESSION['proveedor_flash']);
 try {
     $pdo = database();
     $statement = $pdo->prepare(
@@ -140,7 +142,7 @@ $initial = $fullName !== '' ? mb_strtoupper(mb_substr($fullName, 0, 1, 'UTF-8'),
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Historial de proveedores | Grupo CAP</title>
+    <title>Historial de proveedores | Biblioteca de Proveedores CAP</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&display=swap" rel="stylesheet">
     <style>
@@ -149,7 +151,12 @@ $initial = $fullName !== '' ? mb_strtoupper(mb_substr($fullName, 0, 1, 'UTF-8'),
         .topbar { min-height: 82px; background: #fff; border-bottom: 1px solid #e5e5e8; }
         .topbar nav { position: relative; min-height: 82px; }
         .topbar .page-title { position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; }
-        .cap-name { color: var(--cap-red); font-size: 1.4rem; font-weight: 900; letter-spacing: .08em; }
+        .cap-name { color: var(--cap-red); font-size: 1.6rem; font-weight: 900; letter-spacing: .08em; }
+        .account-toggle { color: var(--ink); border: 1px solid #e5b7b7; border-radius: 999px; background: #fff4f4; font-weight: 700; }
+        .account-toggle:hover, .account-toggle:focus { color: var(--cap-deep); border-color: #d98989; background: #ffeded; }
+        .account-avatar { display: grid; width: 2.35rem; height: 2.35rem; flex: 0 0 2.35rem; place-items: center; overflow: hidden; border-radius: 50%; color: #fff; background: var(--cap-red); font-size: 1rem; font-weight: 800; }
+        .account-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .account-menu .dropdown-menu { min-width: 12rem; border: 1px solid #eee; border-radius: .8rem; box-shadow: 0 12px 30px rgb(20 20 20 / 10%); }
         .page-title { color: var(--cap-red); font-family: "Oswald", "Arial Narrow", system-ui, sans-serif; font-size: clamp(2rem, 3vw, 2.55rem); font-weight: 700; letter-spacing: .015em; line-height: 1; }
         .page-layout { height: calc(100vh - 82px); height: calc(100dvh - 82px); overflow: hidden; }
         .profile-side { height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: clamp(1.25rem, 3vw, 2.25rem); color: #fff; background: linear-gradient(160deg, #b71c1c 0%, #c62828 64%, #df8585 100%); }
@@ -192,20 +199,46 @@ $initial = $fullName !== '' ? mb_strtoupper(mb_substr($fullName, 0, 1, 'UTF-8'),
         .photo-drop-area { padding: 1.5rem; border: 2px dashed #c8c8ce; border-radius: .75rem; text-align: center; background: #fafafa; cursor: pointer; }
         .photo-drop-area.dragging { border-color: var(--cap-red); background: #fff3f3; }
         .modal-dialog-centered { min-height: calc(100% - 1rem); }
-        @media (max-width: 767.98px) { .page-layout { height: auto; overflow: visible; } .profile-side { height: auto; max-height: none; } .main-content { height: auto; min-height: 75vh; overflow: visible; } .history-scroll { overflow: visible; } }
-        @media (max-width: 575.98px) { .topbar nav { display: grid !important; grid-template-columns: 1fr auto 1fr; } .topbar nav > a { grid-column: 1; margin: 0; } .topbar .page-title { display: block !important; position: static; grid-column: 2; transform: none; font-size: 1.35rem; } .topbar nav > form { grid-column: 3; justify-self: end; } }
+        @media (max-width: 767.98px) {
+            html, body { height: auto; min-height: 100%; }
+            body { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+            .page-layout { display: block; height: auto; min-height: 0; overflow: visible; }
+            .profile-side { height: auto; max-height: none; overflow: visible; overscroll-behavior: auto; }
+            .main-content { display: block; height: auto; min-height: 0; overflow: visible; }
+            .history-scroll { height: auto; min-height: 0; overflow: visible; }
+        }
+        @media (max-width: 767.98px) {
+            .topbar { height: auto; }
+            .topbar nav { display: grid !important; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); height: auto; gap: .5rem !important; }
+            .topbar nav > a { grid-column: 1; margin: 0; min-width: 0; }
+            .topbar .page-title { display: block !important; position: static; grid-column: 2; max-width: 100%; min-width: 0; transform: none; white-space: normal; text-align: center; font-size: clamp(1rem, 3.5vw, 1.35rem); line-height: 1.05; }
+            .topbar nav > .account-menu { grid-column: 3; justify-self: end; min-width: 0; }
+            .account-toggle { padding: .375rem .75rem; }
+            .account-toggle > .text-start, .account-toggle::after { display: none !important; }
+        }
         @media (max-width: 575.98px) { .history-item { grid-template-columns: 1fr; } .history-logo { width: 100%; height: 130px; } }
     </style>
+    <link href="../assets/css/mobile-header.css?v=4" rel="stylesheet">
 </head>
 <body data-csrf-token="<?= perfil_escape($_SESSION['csrf_token']) ?>">
 <header class="topbar">
     <nav class="container-fluid px-3 px-lg-4 d-flex align-items-center justify-content-between gap-3 py-3">
         <a class="d-flex align-items-center gap-2 text-decoration-none" href="index.php" aria-label="Inicio CAP">
-            <svg width="40" height="44" viewBox="0 0 48 52" aria-hidden="true"><polygon points="24,2 44,13 44,39 24,50 4,39 4,13" fill="#fff" stroke="#c62828" stroke-width="4" stroke-linejoin="round"/></svg>
+            <img src="../assets/img/cap-emblem.svg" width="40" height="44" alt="">
             <span class="cap-name">CAP</span>
         </a>
-        <h1 class="page-title mb-0 d-none d-sm-block">Proveedores</h1>
-        <form action="../backend/controllers/logout.php" method="post" class="m-0"><input type="hidden" name="csrf_token" value="<?= perfil_escape($_SESSION['csrf_token']) ?>"><button class="btn btn-outline-danger btn-sm" type="submit">Cerrar sesión</button></form>
+        <h1 class="page-title mb-0 d-none d-sm-block">Biblioteca de Proveedores</h1>
+        <div class="dropdown account-menu">
+            <button class="btn account-toggle d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Cuenta de usuario">
+                <span class="account-avatar" aria-hidden="true"><?php if (perfil_media_url($profile['foto_perfil_url'] ?? '') !== ''): ?><img src="<?= perfil_escape(perfil_media_url($profile['foto_perfil_url'])) ?>" alt=""><?php else: ?><?= perfil_escape($initial) ?><?php endif; ?></span>
+                <span class="d-none d-sm-inline text-start"><span class="d-block"><?= perfil_escape($fullName) ?></span><small class="d-block text-secondary fw-normal"><?= perfil_escape($profile['cargo'] ?? '') ?></small></span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="index.php">Ir al inicio</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><form action="../backend/controllers/logout.php" method="post" class="m-0"><input type="hidden" name="csrf_token" value="<?= perfil_escape($_SESSION['csrf_token']) ?>"><button class="dropdown-item text-danger" type="submit">Cerrar sesión</button></form></li>
+            </ul>
+        </div>
     </nav>
 </header>
 <div class="container-fluid"><div class="row page-layout">
@@ -227,6 +260,7 @@ $initial = $fullName !== '' ? mb_strtoupper(mb_substr($fullName, 0, 1, 'UTF-8'),
                 <dt>Nombre completo</dt><dd><?= perfil_escape($fullName) ?></dd>
                 <dt>Cargo o puesto</dt><dd><?= perfil_escape($profile['cargo']) ?></dd>
                 <dt>Área de su puesto</dt><dd><?= perfil_escape($profile['departamento']) ?></dd>
+                <dt>Empresa a la que pertenece</dt><dd><?= perfil_escape($profile['empresa']) ?></dd>
                 <dt>Correo electrónico</dt><dd><?= perfil_escape($profile['correo']) ?></dd>
                 <dt>Celular de trabajo</dt><dd><?= perfil_escape($profile['celular']) ?></dd>
                 <dt>Fecha de ingreso al sistema</dt><dd><?= perfil_escape(date('d/m/Y', strtotime($profile['fecha_registro']))) ?></dd>
@@ -234,6 +268,7 @@ $initial = $fullName !== '' ? mb_strtoupper(mb_substr($fullName, 0, 1, 'UTF-8'),
         <?php endif; ?>
     </aside>
     <main class="col-md-8 col-lg-9 main-content">
+        <?php if ($providerFlash !== ''): ?><div class="alert alert-success py-2" role="status"><?= perfil_escape($providerFlash) ?></div><?php endif; ?>
         <div class="history-tools d-flex flex-wrap align-items-end justify-content-between gap-3">
             <div><p class="text-uppercase small fw-bold text-secondary mb-1">Mi cuenta</p><h2 class="h2 fw-bold mb-0">Historial de proveedores ingresados</h2></div>
             <div class="history-live-wrap">
@@ -263,6 +298,7 @@ $initial = $fullName !== '' ? mb_strtoupper(mb_substr($fullName, 0, 1, 'UTF-8'),
                                 <span class="small text-secondary ms-1"><?= $provider['promedio_estrellas'] === null ? 'Sin calificaciones' : number_format($rating, 1) ?></span>
                             </div>
                             <a class="btn btn-outline-danger btn-sm mt-3" href="proveedor.php?id=<?= (int) $provider['id_proveedor'] ?>">Ir al proveedor</a>
+                            <a class="btn btn-outline-secondary btn-sm mt-3" href="editar_proveedor.php?id=<?= (int) $provider['id_proveedor'] ?>">Editar datos</a>
                         </div>
                         <div class="history-logo">
                         <?php if (perfil_media_url($provider['logo_url'] ?? '') !== ''): ?><img src="<?= perfil_escape(perfil_media_url($provider['logo_url'])) ?>" alt="Logo de <?= $providerName ?>">

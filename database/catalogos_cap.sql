@@ -1,5 +1,4 @@
--- Catálogos de prueba para una base ya importada en XAMPP.
--- Los RTN son ficticios: reemplázalos por los RTN reales antes de producción.
+-- Catálogos para una base ya importada en XAMPP; incluye RTN reales del grupo CAP.
 -- Ejecuta usuario_demo.sql antes de este archivo para cargar las fichas y
 -- calificaciones de muestra vinculadas al usuario de demostración.
 USE biblioteca_proveedores;
@@ -54,11 +53,13 @@ ALTER TABLE usuario ADD CONSTRAINT chk_usuario_celular
   CHECK (celular REGEXP '^[23789][0-9]{7}$');
 
 INSERT INTO empresa_grupo (nombre, rtn) VALUES
-  ('Mansiago',           '11111111111111'),
-  ('Tecnicentro Didasa', '22222222222222'),
-  ('Japan HN',           '33333333333333'),
-  ('S&M',                '44444444444444'),
-  ('Blessing',           '55555555555555')
+  ('AUTOREPUESTOS BLESSING',   '08011988090350'),
+  ('INVERSIONES CASTRO',       '08019019103201'),
+  ('TECNICENTRO DIDASA',       '08019020219802'),
+  ('DISTRIBUIDORA MANSIAGO',   '08019024052985'),
+  ('JAPAN HN S.A. DE C.V.',    '08019026304811'),
+  ('AUTOCARROCERIA BLESSING',  '08019025219107'),
+  ('CAP (SINDY CASTRO)',       '07151992000339')
 ON DUPLICATE KEY UPDATE id_empresa_grupo = LAST_INSERT_ID(id_empresa_grupo);
 
 INSERT INTO departamento (nombre) VALUES
@@ -97,7 +98,7 @@ ON DUPLICATE KEY UPDATE id_cargo = LAST_INSERT_ID(id_cargo);
 -- sustituirse antes de usar esta base fuera del entorno de pruebas.
 INSERT INTO categoria (nombre) VALUES
   ('Papelería'), ('Equipos'), ('Repuestos'), ('Redes'),
-  ('Electrodomésticos'), ('Servicios'), ('Textil')
+  ('Electrodomésticos'), ('Servicios'), ('Textil'), ('Sin clasificar')
 ON DUPLICATE KEY UPDATE id_categoria = LAST_INSERT_ID(id_categoria);
 
 -- Requiere que usuario_demo.sql ya haya creado el usuario de prueba.
@@ -160,7 +161,7 @@ FROM (
   UNION ALL SELECT '99999999999994', 'DEMO-2026-0004', 'CAI-DEMO-0004', '2026-10-08', 6250.00, 937.50, 7187.50
 ) AS muestras
 INNER JOIN proveedor ON proveedor.rtn = muestras.rtn
-INNER JOIN empresa_grupo empresa ON empresa.nombre = 'Mansiago'
+INNER JOIN empresa_grupo empresa ON empresa.nombre = 'DISTRIBUIDORA MANSIAGO'
 INNER JOIN usuario ON usuario.dni = '0801199901234'
 ON DUPLICATE KEY UPDATE
   fecha_documento = VALUES(fecha_documento),

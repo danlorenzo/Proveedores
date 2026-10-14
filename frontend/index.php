@@ -182,7 +182,7 @@ function index_page_url(int $targetPage): string
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#c62828">
-    <title>Proveedores | Grupo CAP</title>
+    <title>Biblioteca de Proveedores | Grupo CAP</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&display=swap" rel="stylesheet">
     <style>
@@ -192,14 +192,18 @@ function index_page_url(int $targetPage): string
         .topbar nav { position: relative; min-height: 82px; }
         .topbar .page-title { position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; }
         .cap-mark { display: inline-grid; width: 44px; height: 48px; place-items: center; }
-        .cap-mark svg { display: block; width: 100%; height: 100%; }
-        .cap-name { color: var(--cap-red); font-size: 1.4rem; font-weight: 900; letter-spacing: .08em; }
-        .page-title { margin: 0; color: var(--cap-red); font-family: "Oswald", "Arial Narrow", system-ui, sans-serif; font-size: clamp(2rem, 3vw, 2.55rem); font-weight: 700; letter-spacing: .015em; line-height: 1; text-shadow: 0 2px 0 rgb(167 25 32 / 10%); }
+        .cap-mark img { display: block; width: 100%; height: 100%; }
+        .cap-name { color: var(--cap-red); font-size: 1.6rem; font-weight: 900; letter-spacing: .08em; }
+        .page-title { margin: 0; color: var(--cap-red); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: clamp(2rem, 3vw, 2.55rem); font-weight: 700; letter-spacing: .015em; line-height: 1; text-shadow: 0 2px 0 rgb(167 25 32 / 10%); }
         .btn-cap { color: #fff; background: var(--cap-red); border: 0; font-weight: 650; }
         .btn-cap:hover { color: #fff; background: var(--cap-deep); }
         .sidebar { position: relative; min-height: 100%; background: #c62828; border-right: 1px solid #e5e5e8; }
         .sidebar::after { position: absolute; top: 100%; left: 0; width: 100%; height: 2rem; background: #c62828; content: ""; }
         .sidebar-title { color: #fff; }
+        .category-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; padding: .65rem .75rem; border: 1px solid rgb(255 255 255 / 45%); border-radius: .5rem; color: #fff; background: rgb(255 255 255 / 10%); font-weight: 700; text-align: left; }
+        .category-toggle:hover, .category-toggle:focus { color: var(--cap-deep); background: rgb(255 255 255 / 88%); }
+        .category-toggle svg { transition: transform .2s ease; }
+        .category-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
         .category-link { display: block; padding: .55rem .75rem; color: #fff; text-decoration: none; border-radius: .5rem; font-weight: 600; transition: background-color .15s ease, color .15s ease; }
         .category-link:hover, .category-link.active { color: var(--cap-deep); background: rgb(255 255 255 / 88%); }
         .search-panel, .provider-card { background: #fff; border: 1px solid #e8e8eb; border-radius: 1rem; }
@@ -234,18 +238,41 @@ function index_page_url(int $targetPage): string
         .add-provider-fab { position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 1030; display: grid; width: 3.7rem; height: 3.7rem; place-items: center; border: 0; border-radius: 50%; color: #fff; background: linear-gradient(145deg, #d93636, #a71920); box-shadow: 0 8px 24px rgb(167 25 32 / 35%); font-size: 2rem; line-height: 1; transition: transform .15s ease; }
         .add-provider-fab:hover, .add-provider-fab:focus { color: #fff; background: #94131b; transform: translateY(-2px); }
         .add-provider-menu { min-width: 15rem; padding: .5rem; border: 1px solid #eee; border-radius: .8rem; box-shadow: 0 12px 30px rgb(20 20 20 / 12%); }
+        #entryFormModal { padding: 0 !important; overflow: hidden; }
+        .entry-form-dialog { width: 100vw; height: 100dvh; max-width: none; margin: 0; }
+        #entryFormModal .modal-content { position: relative; width: 100%; height: 100%; border: 0 !important; background: transparent; box-shadow: none !important; pointer-events: none; }
+        #entryFormModal .modal-header { position: absolute; top: .75rem; right: .75rem; z-index: 2; padding: 0; border: 0; pointer-events: auto; }
+        #entryFormModal .modal-title { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+        #entryFormModal .modal-body { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; padding: 0 !important; pointer-events: none; }
+        .entry-form-frame { display: block; width: 100vw; height: 100dvh; border: 0; background: transparent; pointer-events: auto; }
         .empty-state { padding: 3.5rem 1rem; text-align: center; color: #707078; background: #fff; border: 1px dashed #d7d7dc; border-radius: 1rem; }
         @media (min-width: 768px) { .sidebar { height: calc(100vh - 82px); overflow: visible; } }
-        @media (max-width: 767.98px) { .app-layout { height: auto; overflow: visible; } .sidebar { min-height: 0; height: auto; border-right: 0; border-bottom: 1px solid #e5e5e8; } .sidebar::after { display: none; } .content-main { height: auto; overflow: visible; } .provider-scroll { overflow: visible; } .provider-logo { height: 145px; } .sidebar-title { color: #fff; } .category-link { color: #fff; } .category-link:hover, .category-link.active { color: var(--cap-deep); background: rgb(255 255 255 / 88%); } }
+        @media (max-width: 767.98px) {
+            .topbar nav { display: grid !important; grid-template-columns: auto minmax(0, 1fr) auto; gap: .5rem !important; }
+            .topbar .page-title { position: static; transform: none; white-space: normal; text-align: center; font-size: clamp(1rem, 3.8vw, 1.3rem); line-height: 1.05; }
+            .topbar nav > a { grid-column: 1; }
+            .topbar nav > h1 { grid-column: 2; }
+            .topbar nav > .account-menu { grid-column: 3; justify-self: end; }
+            .app-layout { height: auto; overflow: visible; }
+            .sidebar { min-height: 0; height: auto; border-right: 0; border-bottom: 1px solid #e5e5e8; }
+            .sidebar::after { display: none; }
+            .content-main { height: auto; overflow: visible; }
+            .provider-scroll { overflow: visible; }
+            .provider-logo { height: 145px; }
+            .sidebar-title { color: #fff; }
+            .category-link { color: #fff; }
+            .category-link:hover, .category-link.active { color: var(--cap-deep); background: rgb(255 255 255 / 88%); }
+        }
     </style>
+    <link href="../assets/css/mobile-header.css?v=4" rel="stylesheet">
 </head>
 <body data-csrf-token="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
 <header class="topbar">
     <nav class="container-fluid px-3 px-lg-4 d-flex align-items-center justify-content-between gap-3 py-3">
         <a class="d-flex align-items-center gap-2 text-decoration-none" href="index.php" aria-label="Inicio CAP">
-            <span class="cap-mark" aria-hidden="true"><svg viewBox="0 0 48 52"><polygon points="24,2 44,13 44,39 24,50 4,39 4,13" fill="#fff" stroke="#c62828" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="cap-name">CAP</span>
+            <span class="cap-mark" aria-hidden="true"><img src="../assets/img/cap-emblem.svg" alt=""></span><span class="cap-name">CAP</span>
         </a>
-        <h1 class="page-title h3 mb-0 d-none d-md-block">Proveedores</h1>
+        <h1 class="page-title h3 mb-0">Biblioteca de Proveedores</h1>
         <div class="dropdown account-menu">
             <button class="btn account-toggle d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Cuenta de usuario">
                 <span class="account-avatar" aria-hidden="true"><?php if ($accountPhoto !== ''): ?><img src="<?= htmlspecialchars($accountPhoto, ENT_QUOTES, 'UTF-8') ?>" alt=""><?php else: ?><?= $accountInitial ?><?php endif; ?></span>
@@ -263,19 +290,24 @@ function index_page_url(int $targetPage): string
 <div class="container-fluid">
     <div class="row app-layout">
         <aside class="col-md-3 col-lg-2 sidebar p-3 p-lg-4">
-            <h2 class="h6 fw-bold mb-3 sidebar-title">Categorías</h2>
-            <a class="category-link <?= $activeCategory === 0 ? 'active' : '' ?>" href="index.php">Todas</a>
-            <?php foreach ($categories as $category): ?>
-                <a class="category-link <?= $activeCategory === (int) $category['id_categoria'] ? 'active' : '' ?>"
-                   href="?categoria=<?= (int) $category['id_categoria'] ?>">
-                    <?= htmlspecialchars($category['nombre'], ENT_QUOTES, 'UTF-8') ?>
-                </a>
-            <?php endforeach; ?>
+            <h2 class="h6 fw-bold mb-3 sidebar-title d-none d-md-block">Categorías</h2>
+            <button class="category-toggle d-md-none mb-0" type="button" data-bs-toggle="collapse" data-bs-target="#categoryLinks" aria-expanded="false" aria-controls="categoryLinks">
+                <span>Categorías</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="collapse d-md-block" id="categoryLinks">
+                <a class="category-link <?= $activeCategory === 0 ? 'active' : '' ?>" href="index.php">Todas</a>
+                <?php foreach ($categories as $category): ?>
+                    <a class="category-link <?= $activeCategory === (int) $category['id_categoria'] ? 'active' : '' ?>"
+                       href="?categoria=<?= (int) $category['id_categoria'] ?>">
+                        <?= htmlspecialchars($category['nombre'], ENT_QUOTES, 'UTF-8') ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
         </aside>
 
         <main class="col-md-9 col-lg-10 content-main px-3 px-lg-5 py-3 py-lg-4">
             <div class="sticky-tools">
-            <h1 class="page-title h3 mb-4 text-center d-md-none">Proveedores</h1>
             <div class="search-live-wrap">
             <form id="providerSearchForm" class="search-panel row g-2 align-items-center" action="index.php" method="get">
                 <?php if ($categoryId !== null): ?>
@@ -359,14 +391,122 @@ function index_page_url(int $targetPage): string
     </div>
 </div>
         <?php include __DIR__ . '/partials/footer.php'; ?>
-<div class="dropup position-fixed bottom-0 end-0 m-4">
-    <button class="add-provider-fab" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Ingresar proveedor o compra" title="Ingresar proveedor o compra">+</button>
-    <ul class="dropdown-menu dropdown-menu-end add-provider-menu">
-        <li><span class="dropdown-item-text fw-bold">Ingresar proveedor o compra</span></li>
-        <li><a class="dropdown-item" href="ingresar_documento.php">Escanear factura/recibo o ingresar manualmente</a></li>
-    </ul>
+<button class="add-provider-fab position-fixed bottom-0 end-0 m-4" type="button" data-bs-toggle="modal" data-bs-target="#entryChoiceModal" aria-label="Ingresar datos" title="Ingresar datos">+</button>
+<input class="visually-hidden" type="file" id="entryFilePicker" accept="image/jpeg,image/png,image/webp,application/pdf" aria-label="Tomar foto o elegir archivo">
+<div class="modal fade" id="entryFormModal" tabindex="-1" aria-labelledby="entryFormModalTitle" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered entry-form-dialog"><div class="modal-content border-0 shadow">
+    <div class="modal-header py-2"><h2 class="modal-title h6 fw-bold mb-0" id="entryFormModalTitle">Registrar compra</h2><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Cerrar formulario"></button></div>
+    <div class="modal-body p-0"><iframe class="entry-form-frame" id="entryFormFrame" title="Formulario de registro"></iframe></div>
+  </div></div>
+</div>
+<div class="modal fade" id="entryChoiceModal" tabindex="-1" aria-labelledby="entryChoiceTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow">
+    <div class="modal-header"><h2 class="modal-title h5 fw-bold" id="entryChoiceTitle">¿Cómo quieres ingresar los datos?</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+    <div class="modal-body">
+      <div id="entryMethodChoices" class="d-grid gap-2">
+        <button class="btn btn-outline-danger text-start p-3" type="button" data-entry-method="ocr">Tomar foto o elegir archivo con OCR</button>
+        <button class="btn btn-outline-secondary text-start p-3" type="button" data-entry-method="manual">Escribir los datos manualmente</button>
+      </div>
+      <div id="entryTargetChoices" class="d-none">
+        <button class="btn btn-link px-0 mb-2" type="button" id="entryBackButton">← Cambiar método</button>
+        <p class="text-secondary">¿Qué deseas registrar?</p>
+        <div class="d-grid gap-2"><a class="btn btn-danger p-3" id="entryProviderLink" href="ingresar_proveedor.php?modo=ocr">Nuevo proveedor</a><a class="btn btn-outline-danger p-3" id="entryPurchaseLink" href="ingresar_documento.php?modo=ocr">Nueva compra</a></div>
+      </div>
+    </div>
+  </div></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const entryFilePicker = document.getElementById('entryFilePicker');
+const entryFormModalElement = document.getElementById('entryFormModal');
+const entryFormModal = bootstrap.Modal.getOrCreateInstance(entryFormModalElement);
+const entryFormFrame = document.getElementById('entryFormFrame');
+const showEntryForm = (src, title) => {
+  document.getElementById('entryFormModalTitle').textContent = title;
+  entryFormFrame.src = src;
+  const choicesModal = document.getElementById('entryChoiceModal');
+  if (choicesModal.classList.contains('show')) {
+    choicesModal.addEventListener('hidden.bs.modal', () => entryFormModal.show(), { once: true });
+    bootstrap.Modal.getOrCreateInstance(choicesModal).hide();
+  } else {
+    entryFormModal.show();
+  }
+};
+window.addEventListener('message', (event) => {
+  if (event.origin !== window.location.origin || event.source !== entryFormFrame.contentWindow) return;
+  if (event.data?.type === 'cap-entry-title' && typeof event.data.title === 'string') {
+    document.getElementById('entryFormModalTitle').textContent = event.data.title;
+  }
+  if (event.data?.type === 'cap-entry-close') entryFormModal.hide();
+});
+entryFormModalElement.addEventListener('hidden.bs.modal', () => { entryFormFrame.src = 'about:blank'; });
+const openEntryFileDb = () => new Promise((resolve, reject) => {
+  const request = indexedDB.open('cap-mobile-entry', 1);
+  request.onupgradeneeded = () => request.result.createObjectStore('files', { keyPath: 'id' });
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error);
+});
+
+document.querySelectorAll('[data-entry-method]').forEach((button) => button.addEventListener('click', () => {
+  const mode = button.dataset.entryMethod;
+  if (mode === 'ocr') {
+    entryFilePicker.click();
+    return;
+  }
+  document.getElementById('entryProviderLink').href = `ingresar_proveedor.php?modo=${mode}`;
+  document.getElementById('entryPurchaseLink').href = `ingresar_documento.php?modo=${mode}`;
+  document.getElementById('entryMethodChoices').classList.add('d-none');
+  document.getElementById('entryTargetChoices').classList.remove('d-none');
+}));
+
+document.getElementById('entryProviderLink').addEventListener('click', (event) => {
+  event.preventDefault();
+  showEntryForm(`${event.currentTarget.getAttribute('href')}&embedded=1`, 'Nuevo proveedor');
+});
+document.getElementById('entryPurchaseLink').addEventListener('click', (event) => {
+  event.preventDefault();
+  showEntryForm(`${event.currentTarget.getAttribute('href')}&embedded=1`, 'Registrar compra');
+});
+
+entryFilePicker.addEventListener('change', async () => {
+  const file = entryFilePicker.files[0];
+  if (!file) return;
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+  if (!allowedTypes.includes(file.type)) {
+    window.alert('Formato no admitido. Elige JPG, PNG, WEBP o PDF.');
+    entryFilePicker.value = '';
+    return;
+  }
+  if (file.size > 15 * 1024 * 1024) {
+    window.alert('El archivo supera el límite de 15 MB.');
+    entryFilePicker.value = '';
+    return;
+  }
+  try {
+    const db = await openEntryFileDb();
+    const transaction = db.transaction('files', 'readwrite');
+    transaction.objectStore('files').put({ id: 'pending', file });
+    await new Promise((resolve, reject) => {
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+    db.close();
+    showEntryForm('ingresar_documento.php?modo=ocr&seleccion=1&embedded=1', 'Procesar comprobante');
+  } catch (error) {
+    entryFilePicker.value = '';
+    window.alert('No se pudo preparar el archivo. Intenta de nuevo o elígelo desde el formulario.');
+  }
+});
+document.getElementById('entryBackButton').addEventListener('click', () => {
+  document.getElementById('entryTargetChoices').classList.add('d-none');
+  document.getElementById('entryMethodChoices').classList.remove('d-none');
+});
+document.getElementById('entryChoiceModal').addEventListener('hidden.bs.modal', () => {
+  document.getElementById('entryTargetChoices').classList.add('d-none');
+  document.getElementById('entryMethodChoices').classList.remove('d-none');
+});
+</script>
 <script src="../assets/js/renovar-sesion.js" defer></script>
 <script src="../assets/js/buscar-proveedores.js" defer></script>
 </body>

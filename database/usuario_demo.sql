@@ -5,10 +5,11 @@
 USE biblioteca_proveedores;
 START TRANSACTION;
 
-INSERT INTO empresa_grupo (nombre, rtn)
-VALUES ('Empresa Demo CAP', '00000000000000')
-ON DUPLICATE KEY UPDATE id_empresa_grupo = LAST_INSERT_ID(id_empresa_grupo);
-SET @id_empresa_demo = LAST_INSERT_ID();
+-- La cuenta de demostración usa la empresa CAP real; evita crear un registro
+-- ficticio de empresa y RTN en el catálogo.
+SET @id_empresa_demo = (
+  SELECT id_empresa_grupo FROM empresa_grupo WHERE rtn = '07151992000339' LIMIT 1
+);
 
 INSERT INTO departamento (nombre)
 VALUES ('Sistemas Demo')

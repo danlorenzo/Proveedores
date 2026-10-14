@@ -164,14 +164,14 @@ CREATE TABLE documento_compra (
   cai              VARCHAR(40) NULL,
   fecha_documento  DATE NOT NULL,
   atendido_por     VARCHAR(100) NULL,
-  subtotal         DECIMAL(12,2) NOT NULL DEFAULT 0,
-  subtotal_exento  DECIMAL(12,2) NOT NULL DEFAULT 0,
-  subtotal_exonerado DECIMAL(12,2) NOT NULL DEFAULT 0,
-  subtotal_gravado_15 DECIMAL(12,2) NOT NULL DEFAULT 0,
-  isv              DECIMAL(12,2) NOT NULL DEFAULT 0,
-  descuento_total  DECIMAL(12,2) NOT NULL DEFAULT 0,
-  costo_envio      DECIMAL(12,2) NOT NULL DEFAULT 0,
-  retencion_isr    DECIMAL(12,2) NOT NULL DEFAULT 0,
+  subtotal         DECIMAL(12,2) NULL DEFAULT NULL,
+  subtotal_exento  DECIMAL(12,2) NULL DEFAULT NULL,
+  subtotal_exonerado DECIMAL(12,2) NULL DEFAULT NULL,
+  subtotal_gravado_15 DECIMAL(12,2) NULL DEFAULT NULL,
+  isv              DECIMAL(12,2) NULL DEFAULT NULL,
+  descuento_total  DECIMAL(12,2) NULL DEFAULT NULL,
+  costo_envio      DECIMAL(12,2) NULL DEFAULT NULL,
+  retencion_isr    DECIMAL(12,2) NULL DEFAULT NULL,
   total            DECIMAL(12,2) NOT NULL,
   moneda           CHAR(3) NOT NULL DEFAULT 'HNL',
   imagen_url       VARCHAR(255) NULL,           -- foto o PDF original
@@ -191,17 +191,17 @@ CREATE TABLE documento_compra (
 ) ENGINE=InnoDB;
 
 -- Productos o servicios comprados (la "matriz" del perfil del proveedor).
--- El importe de cada línea = cantidad * precio_unitario - descuento (se calcula).
+-- Se almacenan las cifras visibles en el comprobante; la aplicación no deriva importes.
 CREATE TABLE detalle_documento (
   id_detalle      INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   id_documento    INT UNSIGNED NOT NULL,
   descripcion     VARCHAR(255) NOT NULL,
-  cantidad        DECIMAL(10,2) NOT NULL,
-  precio_unitario DECIMAL(12,2) NOT NULL,
-  descuento       DECIMAL(12,2) NOT NULL DEFAULT 0,
+  cantidad        DECIMAL(10,2) NULL DEFAULT NULL,
+  precio_unitario DECIMAL(12,2) NULL DEFAULT NULL,
+  descuento       DECIMAL(12,2) NULL DEFAULT NULL,
   imagen_url      VARCHAR(255) NULL,
-  CHECK (cantidad > 0),
-  CHECK (precio_unitario >= 0),
+  CHECK (cantidad IS NULL OR cantidad > 0),
+  CHECK (precio_unitario IS NULL OR precio_unitario >= 0),
   FOREIGN KEY (id_documento) REFERENCES documento_compra (id_documento)
 ) ENGINE=InnoDB;
 
@@ -251,19 +251,20 @@ WHERE u.correo_verificado = 1;
 -- ORDER BY n.fecha DESC LIMIT 20;
 
 -- ---------------------------------------------------------------------
--- 6. DATOS INICIALES (completar con los RTN reales, 14 dígitos sin guiones)
+-- 6. DATOS INICIALES (RTN reales, 14 dígitos sin guiones)
 -- ---------------------------------------------------------------------
--- RTN ficticios para desarrollo local. Reemplazarlos por los RTN reales.
 INSERT INTO empresa_grupo (nombre, rtn) VALUES
-  ('Mansiago',           '11111111111111'),
-  ('Tecnicentro Didasa', '22222222222222'),
-  ('Japan HN',           '33333333333333'),
-  ('S&M',                '44444444444444'),
-  ('Blessing',           '55555555555555');
+  ('AUTOREPUESTOS BLESSING',   '08011988090350'),
+  ('INVERSIONES CASTRO',       '08019019103201'),
+  ('TECNICENTRO DIDASA',       '08019020219802'),
+  ('DISTRIBUIDORA MANSIAGO',   '08019024052985'),
+  ('JAPAN HN S.A. DE C.V.',    '08019026304811'),
+  ('AUTOCARROCERIA BLESSING',  '08019025219107'),
+  ('CAP (SINDY CASTRO)',       '07151992000339');
 
 INSERT INTO categoria (nombre) VALUES
   ('Papelería'), ('Equipos'), ('Repuestos'), ('Redes'),
-  ('Electrodomésticos'), ('Servicios'), ('Textil');
+  ('Electrodomésticos'), ('Servicios'), ('Textil'), ('Sin clasificar');
 
 INSERT INTO departamento (nombre) VALUES
   ('Compras internas'),

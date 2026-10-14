@@ -3,11 +3,40 @@
 
   const $ = (selector) => document.querySelector(selector);
   const fileInput = $('#documentFile');
-  const cameraInput = $('#cameraFile');
   const analyzeButton = $('#analyzeButton');
   const saveButton = $('#saveButton');
   const form = $('#documentForm');
   const context = window.CAP_OCR_CONTEXT || { companies: [], providers: [] };
+  const embeddedMode = document.body.classList.contains('embedded-entry');
+  const loadingModalElement = $('#ocrLoadingModal');
+  const loadingModal = bootstrap.Modal.getOrCreateInstance(loadingModalElement, { backdrop: !embeddedMode });
+  const showWorkflowModal = (element) => {
+    if (!embeddedMode) {
+      bootstrap.Modal.getOrCreateInstance(element).show();
+      return;
+    }
+    element.style.display = 'block';
+    element.classList.add('show');
+    element.removeAttribute('aria-hidden');
+  };
+  const hideWorkflowModal = (element) => {
+    if (!embeddedMode) {
+      bootstrap.Modal.getOrCreateInstance(element).hide();
+      return;
+    }
+    element.classList.remove('show');
+    element.style.display = 'none';
+    element.setAttribute('aria-hidden', 'true');
+  };
+  const circleCircumference = 2 * Math.PI * 44;
+  let ocrPageCount = 1;
+  let ocrCurrentPage = 1;
+  const updateOcrProgress = (fraction) => {
+    const value = Math.max(0, Math.min(1, fraction));
+    $('#ocrCircleValue').style.strokeDashoffset = String(circleCircumference * (1 - value));
+    $('#ocrPercent').textContent = `${Math.round(value * 100)}%`;
+    $('.ocr-progress-circle').setAttribute('aria-valuenow', String(Math.round(value * 100)));
+  };
   if (!fileInput || !form) return;
 
   let workerPromise = null;
@@ -18,6 +47,7 @@
     $('#ocrPanel').classList.toggle('d-none', nextMode !== 'ocr');
     $('#reviewFields').classList.toggle('d-none', nextMode === 'ocr' && !$('#reviewFields').dataset.ready);
     saveButton.classList.toggle('d-none', nextMode === 'ocr' && !$('#reviewFields').dataset.ready);
+    if (nextMode === 'manual') showWorkflowModal($('#reviewModal'));
     document.querySelectorAll('[data-entry-mode]').forEach((button) => {
       button.classList.toggle('active', button.dataset.entryMode === nextMode);
       button.setAttribute('aria-pressed', button.dataset.entryMode === nextMode ? 'true' : 'false');
@@ -27,15 +57,31 @@
   document.querySelectorAll('[data-entry-mode]').forEach((button) => {
     button.addEventListener('click', () => setMode(button.dataset.entryMode));
   });
+  if (embeddedMode) {
+    const closeReview = () => window.parent.postMessage({ type: 'cap-entry-close' }, window.location.origin);
+    $('#reviewCloseButton').removeAttribute('data-bs-dismiss');
+    $('#reviewCloseButton').addEventListener('click', closeReview);
+    $('#reviewCancelButton').addEventListener('click', (event) => {
+      event.preventDefault();
+      closeReview();
+    });
+  }
   $('#addItemRow').addEventListener('click', () => addItemRow());
+  $('#itemRows').addEventListener('click', (event) => {
+    if (!event.target.closest('.find-product-image')) return;
+    const row = event.target.closest('.item-row');
+    const description = row.querySelector('.item-description').value.trim();
+    if (!description) { row.querySelector('.item-description').focus(); return; }
+    const query = `${description} producto imagen Honduras`;
+    window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer');
+  });
   $('#itemRows').addEventListener('click', (event) => {
     if (!event.target.closest('.remove-item-row')) return;
     const rows = document.querySelectorAll('.item-row');
     if (rows.length > 1) event.target.closest('.item-row').remove();
-    else event.target.closest('.item-row').querySelectorAll('input').forEach((input) => { input.value = input.name.includes('descuento') ? '0' : ''; });
+    else event.target.closest('.item-row').querySelectorAll('input').forEach((input) => { input.value = ''; });
   });
   $('#fileButton').addEventListener('click', () => fileInput.click());
-  $('#cameraButton').addEventListener('click', () => cameraInput.click());
   $('#publicSearchButton').addEventListener('click', () => {
     const name = $('#emisorNombre').value.trim();
     const rtn = normalizeRtn($('#rtnEmisor').value);
@@ -58,8 +104,34 @@
     analyzeButton.classList.remove('d-none');
     $('#ocrError').classList.add('d-none');
   };
+
+  const consumeStagedFile = async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('cap-mobile-entry', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('files', { keyPath: 'id' });
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const transaction = db.transaction('files', 'readwrite');
+    const store = transaction.objectStore('files');
+    const file = await new Promise((resolve, reject) => {
+      const request = store.get('pending');
+      request.onsuccess = () => {
+        const record = request.result;
+        store.delete('pending');
+        resolve(record ? record.file : null);
+      };
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+    db.close();
+    return file;
+  };
   fileInput.addEventListener('change', () => setSelectedFile(fileInput.files[0]));
-  cameraInput.addEventListener('change', () => setSelectedFile(cameraInput.files[0]));
 
   const parseMoney = (value) => {
     let normalized = String(value || '').replace(/[^\d,.-]/g, '');
@@ -91,6 +163,11 @@
     });
     return found;
   };
+  const findPhones = (text) => [...new Set(
+    [...text.matchAll(/(?:\+?504[\s-]?)?([23789]\d{3}[\s-]?\d{4})/g)]
+      .map((match) => normalizeRtn(match[1]))
+      .filter((phone) => phone.length === 8)
+  )];
 
   const matchRtnField = (rtn) => {
     const clean = normalizeRtn(rtn);
@@ -113,31 +190,51 @@
     }
   };
 
+  const normalizeProviderName = (value) => String(value || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ').trim();
+  const showNewProviderFields = (show) => {
+    const group = $('#newProviderFields');
+    group.classList.toggle('d-none', !show);
+    group.querySelectorAll('input, button').forEach((field) => { field.disabled = !show; });
+  };
   const applyProviderMatch = (rtn, suggestedName = '') => {
     const clean = matchRtnField(rtn);
     $('#rtnEmisor').value = clean;
-    const provider = context.providers.find((entry) => normalizeRtn(entry.rtn) === clean);
-    const select = $('#proveedorExistente');
+    const byRtn = clean ? context.providers.find((entry) => normalizeRtn(entry.rtn) === clean) : null;
+    const targetName = normalizeProviderName(suggestedName);
+    const byName = !byRtn && targetName.length >= 5
+      ? context.providers.find((entry) => {
+        const savedName = normalizeProviderName(entry.name);
+        return (!clean || !entry.rtn || normalizeRtn(entry.rtn) === clean) && (savedName === targetName
+          || (Math.min(savedName.length, targetName.length) >= 8 && (savedName.includes(targetName) || targetName.includes(savedName))));
+      })
+      : null;
+    const provider = byRtn || byName;
+    showNewProviderFields(!provider);
     if (provider) {
-      select.value = String(provider.id);
       $('#emisorNombre').value = provider.name;
-      $('#categoriaProveedor').value = String(provider.category);
-      $('#providerMatchMessage').textContent = `Proveedor reconocido por RTN: ${provider.name}.`;
-      $('#providerMatchMessage').className = 'form-text text-success';
+      $('#providerMatchMessage').textContent = byRtn
+        ? `Proveedor reconocido por RTN: ${provider.name}.`
+        : `Posible proveedor existente: ${provider.name}. El servidor confirmará la coincidencia al guardar.`;
+      $('#providerMatchMessage').className = byRtn ? 'form-text text-success' : 'form-text text-warning';
     } else {
-      select.value = '';
-      if (suggestedName && !$('#emisorNombre').value) $('#emisorNombre').value = suggestedName.slice(0, 150);
-      $('#providerMatchMessage').textContent = clean ? 'No encontramos ese RTN en la BD. Completa el nombre y la categoría para registrar al proveedor.' : 'No se detectó RTN del emisor. Ingresa el nombre; puede guardarse sin vincular un proveedor hondureño.';
-      $('#providerMatchMessage').className = 'form-text text-warning';
+      if (suggestedName) $('#emisorNombre').value = suggestedName.slice(0, 150);
+      $('#providerMatchMessage').textContent = clean
+        ? 'No hay coincidencia por RTN en la lista local; el servidor verificará de nuevo y creará la ficha si no existe.'
+        : 'El servidor buscará el nombre al guardar y creará la ficha si es un proveedor nuevo.';
+      $('#providerMatchMessage').className = 'form-text text-secondary';
     }
   };
 
-  $('#proveedorExistente').addEventListener('change', (event) => {
-    const option = event.target.selectedOptions[0];
-    if (!option || !option.value) return;
-    $('#emisorNombre').value = option.dataset.name || '';
-    $('#rtnEmisor').value = normalizeRtn(option.dataset.rtn || '');
-    $('#categoriaProveedor').value = option.dataset.category || '';
+  $('#emisorNombre').addEventListener('input', () => {
+    const typedName = normalizeProviderName($('#emisorNombre').value);
+    const exactMatch = context.providers.find((entry) => normalizeProviderName(entry.name) === typedName);
+    showNewProviderFields(!exactMatch);
+    $('#providerMatchMessage').textContent = exactMatch
+      ? `Posible proveedor existente: ${exactMatch.name}. El servidor confirmará la coincidencia al guardar.`
+      : 'El servidor buscará el nombre al guardar y creará la ficha si es un proveedor nuevo; se asignará “Sin clasificar”.';
+    $('#providerMatchMessage').className = exactMatch ? 'form-text text-success' : 'form-text text-secondary';
   });
   $('#rtnCliente').addEventListener('input', (event) => {
     if (normalizeRtn(event.target.value).length === 14) applyCompanyMatch(event.target.value);
@@ -150,18 +247,15 @@
   $('#rtnEmisor').addEventListener('input', (event) => {
     const clean = normalizeRtn(event.target.value);
     if (clean.length !== 14) {
-      $('#proveedorExistente').value = '';
-      $('#providerMatchMessage').textContent = 'Completa los 14 dígitos del RTN para buscar un proveedor registrado.';
+      $('#providerMatchMessage').textContent = $('#emisorNombre').value.trim()
+        ? 'El servidor buscará el nombre al guardar y creará la ficha si es un proveedor nuevo.'
+        : 'El OCR buscará la ficha por RTN; si es un proveedor nuevo, la creará al guardar.';
       $('#providerMatchMessage').className = 'form-text text-secondary';
       return;
     }
     const match = context.providers.find((entry) => normalizeRtn(entry.rtn) === clean);
     if (match) applyProviderMatch(match.rtn, match.name);
-    else {
-      $('#proveedorExistente').value = '';
-      $('#providerMatchMessage').textContent = 'RTN no encontrado; ingresa el nombre y categoría del proveedor.';
-      $('#providerMatchMessage').className = 'form-text text-warning';
-    }
+    else applyProviderMatch(clean, $('#emisorNombre').value);
   });
 
   const setValue = (selector, value) => {
@@ -186,13 +280,29 @@
     const lower = text.toLocaleLowerCase('es');
     const amazon = /amazon|order\s*(?:number|#)|n[uú]mero\s+de\s+pedido/i.test(lower);
     const rtns = findRtns(lines);
-    const clientRtn = amazon ? null : rtns.find((entry) => /cliente|comprador|recib[ií]\s+de|nombre:/i.test(entry.context));
-    const supplierRtn = amazon ? null : rtns.find((entry) => entry !== clientRtn);
-    const caiLine = firstLineFor(lines, /\bca[i1]\b/i);
-    const caiMatch = caiLine.match(/\bCA[I1]\s*[:.]?\s*([A-Z0-9][A-Z0-9-]{7,})/i);
-    const invoiceMatch = text.match(/(?:factura|recibo|n[úuº°.]?\s*o?)[\s:#nº°-]{0,16}([0-9]{3,}(?:[-/][0-9A-Z]+){1,5}|[0-9]{5,})/i);
-    const dateLine = lines.find((line) => /fecha/i.test(line) && !/l[ií]mite|vencimiento|emisi[oó]n hasta/i.test(line)) || '';
-    const dateMatch = (dateLine || text).match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/);
+    const clientRtn = amazon ? null : (rtns.find((entry) => /cliente|comprador|recib[ií]\s+de|nombre:|sr\.?\s*\(?a\)?|direcci[oó]n\s*:/i.test(entry.context))
+      || (rtns.length > 1 ? rtns[rtns.length - 1] : null));
+    const supplierRtn = amazon ? null : (rtns.find((entry) => entry !== clientRtn) || (rtns.length === 1 ? rtns[0] : null));
+    const caiLine = lines.find((line) => /C\.?\s*A\.?\s*[I1]\.?\s*:/i.test(line)) || '';
+    const caiMatch = (caiLine || text).match(/C\.?\s*A\.?\s*[I1]\.?\s*:?\s*([A-Z0-9][A-Z0-9-]{7,})/i);
+    const invoiceMatch = text.match(/(?:factura|recibo)\s*(?:n(?:[úuº°.]|um(?:ero)?)?\s*)?[#º°.:\-\s]*([0-9]{3,}(?:[-/][0-9A-Z]+){1,5}|[0-9]{5,})/i)
+      || text.match(/\bN\s*[º°.]\s*([0-9]{3,}(?:[-/][0-9A-Z]+){1,5})/i);
+    const invoiceNumberMatch = text.match(/(?:factura|recibo)[^\n]{0,20}?N\s*[º°o.]?\s*([0-9]{3}[-/]\d{3}[-/]\d{2}[-/]\d{5,})/i) || invoiceMatch;
+    const dateLine = lines.find((line) => /fecha/i.test(line) && !/l[ií]mite|vencimiento|emisi[oó]n hasta/i.test(line))
+      || lines.find((line) => /D[I1]A\s*M[E3]S\s*A[NÑ]O/i.test(line)) || '';
+    const dateLineIndex = lines.indexOf(dateLine);
+    const dateContext = dateLine && /D[I1]A\s*M[E3]S\s*A[NÑ]O/i.test(dateLine)
+      ? lines.slice(dateLineIndex, dateLineIndex + 3).join(' ')
+      : (dateLine || text);
+    let dateMatch = dateContext.match(/\b(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})\b/);
+    if (!dateMatch) {
+      const boxedDate = dateContext.match(/D[I1]A\s*M[E3]S\s*A[NÑ]O[\s\S]{0,55}?(\d{1,2})\D{1,4}(\d{1,2})\D{1,4}(\d{2,4})/i);
+      if (boxedDate) dateMatch = [boxedDate[0], boxedDate[1], boxedDate[2], boxedDate[3]];
+    }
+    if (!dateMatch) {
+      const separatedDate = dateContext.match(/\b(\d{1,2})\s+(\d{1,2})\s+(\d{2,4})\b/);
+      if (separatedDate) dateMatch = separatedDate;
+    }
     let dateValue = '';
     if (dateMatch) {
       let year = Number(dateMatch[3]);
@@ -203,30 +313,57 @@
     }
 
     const honorarios = /recibo\s+por\s+honorarios/i.test(lower);
-    let type = amazon ? 'amazon' : (honorarios ? 'recibo_honorarios' : (/recibo/i.test(lower) ? 'recibo' : 'factura'));
+    const invoiceSignals = /\bfactura\b|\bCAI\b|rango\s+autorizado|fecha\s+l[ií]mite/i.test(text);
+    const receiptSignals = /\brecibo\b|comprobante\s+de\s+pago|voucher/i.test(text);
+    let type = amazon ? 'amazon' : (honorarios ? 'recibo_honorarios' : (invoiceSignals ? 'factura' : (receiptSignals ? 'recibo' : 'factura')));
     const getLabeled = (patterns) => {
       const line = lines.find((item) => patterns.some((pattern) => pattern.test(item)));
       return line ? lastMoneyOnLine(line) : null;
     };
-    let total = amountFromLabel(lines, [/total\s+a\s+pagar/i, /total\s+neto\s+recibido/i, /total\s+por\s+honorarios/i, /^total\b/i, /total\s+pagado/i]);
+    const total = amountFromLabel(lines, [/total\s+a\s+pagar/i, /total\s+neto\s+recibido/i, /total\s+por\s+honorarios/i, /^total\b/i, /total\s+pagado/i]);
     let subtotal = amountFromLabel(lines, [/sub[- ]?total/i, /importe\s+gravado/i, /subtotal/i]);
-    const isvLine = lines.find((line) => /\bISV\b|impuesto\s+s(?:obre)?\s+ventas/i.test(line) && !/18\s*%/i.test(line));
+    const isvLine = lines.find((line) => /\bI\.?\s*S\.?\s*V\.?(?=\s|$|\d)|impuesto\s+s(?:obre)?\s+ventas/i.test(line) && !/18\s*%/i.test(line));
     let isv = isvLine ? lastMoneyOnLine(isvLine) : null;
-    if (subtotal === null && total !== null && isv !== null && total >= isv) subtotal = Number((total - isv).toFixed(2));
-    if (total === null && subtotal !== null) total = Number((subtotal + (isv || 0)).toFixed(2));
 
     const currency = /\bUSD\b|US\$|\$\s*\d/.test(text) ? 'USD' : (/\bEUR\b|€/.test(text) ? 'EUR' : 'HNL');
-    const companyNameLine = lines.find((line) => /cliente\s*:/i.test(line)) || lines.find((line) => /recib[ií]\s+de/i.test(line)) || '';
-    const supplierName = lines.slice(0, 8).find((line) => line.length > 4 && !/r\.?t\.?n|cai\s*[:.]|factura|recibo|tel[eé]fono|correo|e-mail/i.test(line)) || '';
+    const companyNameLine = lines.find((line) => /cliente\s*:|sr\.?\s*\(?a\)?\s*:/i.test(line)) || lines.find((line) => /recib[ií]\s+de/i.test(line)) || '';
+    const supplierName = lines.slice(0, 8).find((line) => line.length > 4 && !/r\.?t\.?n|cai\s*[:.]|factura|recibo|tel[eé]fono|correo|e-mail|plaza|aldea|colonia|barrio|calle|avenida|\b(?:tel|cel)\.?\s*:/i.test(line)) || '';
+    const email = (text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [])[0] || '';
+    const phones = findPhones(text);
+    const addressStart = lines.findIndex((line) => /\b(?:aldea|colonia|barrio|calle|avenida|blvd\.?|boulevard|residencial|km\.?|carretera|localidad)\b/i.test(line));
+    let address = '';
+    if (addressStart >= 0) {
+      const addressLines = [];
+      for (const line of lines.slice(addressStart, addressStart + 4)) {
+        if (/e-?mail|correo|\b(?:tel|cel)\.?\s*:?|r\.?t\.?n|\bcai\b|factura/i.test(line)) break;
+        addressLines.push(line);
+      }
+      address = addressLines.join(', ').slice(0, 255);
+    }
     const reference = amazon ? (text.match(/\b\d{3}-\d{7}-\d{7}\b/) || [])[0] : '';
     const items = [];
-    const headerIndex = lines.findIndex((line) => /cant(?:idad)?/i.test(line) && /descrip/i.test(line));
+    const headerIndex = lines.findIndex((line, index) => /cant(?:idad)?/i.test(line)
+      && (/descrip/i.test(line) || /descrip/i.test(lines[index + 1] || '') || /descrip/i.test(lines[index + 2] || '')));
     if (headerIndex >= 0) {
+      let currentItem = null;
       for (const line of lines.slice(headerIndex + 1)) {
-        if (/subtotal|total\s+a\s+pagar|importe\s+gravado|\bISV\b|exonerad[oa]|exent[oa]/i.test(line)) break;
-        const itemMatch = line.match(/^\s*(\d{1,5}(?:[.,]\d{1,2})?)\s+(.{3,}?)\s+(?:L\.?\s*)?([\d,]+\.\d{2})\s+(?:L\.?\s*)?([\d,]+\.\d{2})\s*$/i);
-        if (itemMatch && items.length < 30) {
-          items.push({ description: itemMatch[2].trim(), quantity: parseMoney(itemMatch[1]) || 1, unitPrice: parseMoney(itemMatch[3]) || 0, discount: 0 });
+        if (/rango\s+autorizado|fecha\s+l[ií]mite|\bCAI\b|importe\s+(?:exonerado|exento|gravado)|total\s+a\s+pagar|cantidad\s+en\s+letras|la\s+factura\s+es/i.test(line)) break;
+        const amountMatches = [...line.matchAll(/(?:L\.?\s*)?\d[\d,]*\.\d{2}/g)];
+        const quantityMatch = line.match(/^\s*(\d{1,5}(?:[.,]\d{1,2})?)\s+(.+)$/);
+        if (quantityMatch && amountMatches.length > 0 && items.length < 30) {
+          const firstAmountIndex = amountMatches[0].index;
+          const descriptionStart = quantityMatch[0].length - quantityMatch[2].length;
+          let description = line.slice(descriptionStart, firstAmountIndex).trim();
+          description = description.replace(/[|\s,;:-]+$/, '');
+          if (description) {
+            currentItem = { description, quantity: parseMoney(quantityMatch[1]), unitPrice: parseMoney(amountMatches[0][0]), discount: null };
+            items.push(currentItem);
+          }
+        } else if (currentItem && line.trim()) {
+          currentItem.description = `${currentItem.description} ${line.trim()}`.slice(0, 255);
+        } else if (quantityMatch && items.length < 30) {
+          currentItem = { description: quantityMatch[2].trim(), quantity: parseMoney(quantityMatch[1]), unitPrice: null, discount: null };
+          items.push(currentItem);
         }
       }
     }
@@ -235,9 +372,12 @@
       rtnClient: clientRtn?.value || '',
       rtnSupplier: supplierRtn?.value || '',
       cai: caiMatch?.[1] || '',
-      invoice: invoiceMatch?.[1] || '',
+      invoice: invoiceNumberMatch?.[1] || '',
       date: dateValue,
       supplierName,
+      email,
+      phones,
+      address,
       customerLine: companyNameLine,
       reference,
       currency,
@@ -256,16 +396,19 @@
   };
 
   function addItemRow(item = {}) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'row g-2 align-items-end item-row';
-    wrapper.innerHTML = '<div class="col-12 col-md-6"><label class="form-label small">Descripción</label><input class="form-control" name="detalle_descripcion[]" maxlength="255"></div>'
-      + '<div class="col-4 col-md-2"><label class="form-label small">Cantidad</label><input class="form-control" name="detalle_cantidad[]" type="number" min="0.01" step="0.01"></div>'
-      + '<div class="col-4 col-md-2"><label class="form-label small">Precio unitario</label><input class="form-control" name="detalle_precio[]" type="number" min="0" step="0.01"></div>'
-      + '<div class="col-4 col-md-2"><label class="form-label small">Descuento</label><input class="form-control" name="detalle_descuento[]" type="number" min="0" step="0.01" value="0"><button class="btn btn-link text-danger btn-sm px-0 remove-item-row" type="button">Quitar</button></div>';
+    const wrapper = document.createElement('tr');
+    wrapper.className = 'item-row';
+    wrapper.innerHTML = '<td><input class="form-control item-description" name="detalle_descripcion[]" maxlength="255" aria-label="Artículo o servicio"></td>'
+      + '<td><input class="form-control" name="detalle_cantidad[]" type="number" min="0.01" step="0.01" aria-label="Cantidad (si aparece)"></td>'
+      + '<td><input class="form-control" name="detalle_precio[]" type="number" min="0" step="0.01" aria-label="Precio unitario (si aparece)"></td>'
+      + '<td><input class="form-control" name="detalle_descuento[]" type="number" min="0" step="0.01" aria-label="Descuento (si aparece)"></td>'
+      + '<td><div class="input-group"><input class="form-control item-image-url" name="detalle_imagen_url[]" type="url" maxlength="255" placeholder="URL HTTPS" aria-label="Imagen de referencia"><button class="btn btn-outline-secondary find-product-image" type="button">Buscar</button></div></td>'
+      + '<td><button class="btn btn-link text-danger btn-sm remove-item-row" type="button">Quitar</button></td>';
     wrapper.querySelector('[name="detalle_descripcion[]"]').value = item.description || '';
+    if (wrapper.querySelector('[name="detalle_imagen_url[]"]')) wrapper.querySelector('[name="detalle_imagen_url[]"]').value = item.imageUrl || '';
     wrapper.querySelector('[name="detalle_cantidad[]"]').value = item.quantity ?? '';
     wrapper.querySelector('[name="detalle_precio[]"]').value = item.unitPrice ?? '';
-    wrapper.querySelector('[name="detalle_descuento[]"]').value = item.discount ?? '0';
+    wrapper.querySelector('[name="detalle_descuento[]"]').value = item.discount ?? '';
     $('#itemRows').append(wrapper);
   }
 
@@ -321,9 +464,7 @@
             $('#ocrStatus').textContent = statuses[message.status] || 'Preparando motor OCR…';
           }
           if (Number.isFinite(message.progress)) {
-            const percent = Math.max(0, Math.min(100, Math.round(message.progress * 100)));
-            $('#ocrPercent').textContent = `${percent}%`;
-            $('#ocrProgress').style.width = `${percent}%`;
+            updateOcrProgress(((ocrCurrentPage - 1) + message.progress) / ocrPageCount);
           }
         },
       });
@@ -362,43 +503,61 @@
     if (!validImage && !validPdf) return showOcrError('Formato no admitido. Usa JPG, PNG, WEBP o PDF.');
     if (file.size > 15 * 1024 * 1024) return showOcrError('El archivo supera el límite de 15 MB.');
       $('#ocrError').classList.add('d-none');
-      $('#ocrProgressBlock').classList.remove('d-none');
-      $('#ocrStatus').textContent = 'Conectando con el motor OCR…';
-      $('#ocrPercent').textContent = '0%';
-      $('#ocrProgress').style.width = '0%';
+    $('#ocrStatus').textContent = 'Conectando con el motor OCR…';
+    updateOcrProgress(0);
+    if (embeddedMode) showWorkflowModal(loadingModalElement);
+    else loadingModal.show();
     analyzeButton.disabled = true;
     let worker;
     try {
       worker = await initializeWorker();
+      await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
       let pages = 1;
       if (validPdf) {
         const documentPdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
         pages = Math.min(documentPdf.numPages, 5);
       }
+      ocrPageCount = pages;
       const results = [];
       for (let page = 1; page <= pages; page += 1) {
+        ocrCurrentPage = page;
         $('#ocrStatus').textContent = validPdf ? `Analizando página ${page} de ${pages}…` : 'Analizando imagen…';
+        updateOcrProgress((page - 1) / pages);
         const canvas = await toCanvas(file, page);
-        const result = await worker.recognize(canvas);
+      const result = await worker.recognize(canvas);
         results.push(result.data.text || '');
       }
       const raw = results.join('\n\n--- Página ---\n\n');
       fillForm(extractFields(raw));
+      if (document.body.classList.contains('embedded-entry') && window.parent !== window) {
+        window.parent.postMessage({ type: 'cap-entry-title', title: 'Revisar comprobante' }, window.location.origin);
+      }
       const reviewNotice = $('#reviewNotice');
+      const selectedDocumentType = $('#tipoDocumento').selectedOptions[0]?.textContent || 'comprobante';
       if (/\b(?:ISV|impuesto\s+s(?:obre)?\s+ventas|gravado)\s*18\s*%/i.test(raw)) {
-        reviewNotice.textContent = 'El comprobante parece mencionar ISV 18%. Esta aplicación solo registra ISV al 15%; verifica el documento y no clasifiques ese importe automáticamente como 15%. El importe de ISV quedó sin completar.';
+        reviewNotice.textContent = `El comprobante parece ser: ${selectedDocumentType}. También parece mencionar ISV 18%; verifica ese dato, ya que el sistema registra ISV al 15%. Los campos detectados son sugerencias y puedes corregirlos.`;
         reviewNotice.className = 'alert alert-warning';
       } else {
-        reviewNotice.textContent = 'Los valores detectados son sugerencias. Confírmalos contra el comprobante.';
+        reviewNotice.textContent = `El comprobante parece ser: ${selectedDocumentType}. Los campos detectados son sugerencias; verifica y corrige los datos antes de guardar.`;
         reviewNotice.className = 'alert alert-info';
       }
       $('#reviewFields').dataset.ready = '1';
       $('#reviewFields').classList.remove('d-none');
       saveButton.classList.remove('d-none');
       $('#ocrStatus').textContent = 'Análisis terminado. Revisa los datos sugeridos.';
-      $('#ocrPercent').textContent = `${pages} ${pages === 1 ? 'página' : 'páginas'}`;
-      $('#reviewFields').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      updateOcrProgress(1);
+      if (embeddedMode) {
+        hideWorkflowModal(loadingModalElement);
+        showWorkflowModal($('#reviewModal'));
+      } else {
+        loadingModalElement.addEventListener('hidden.bs.modal', () => {
+          bootstrap.Modal.getOrCreateInstance($('#reviewModal')).show();
+        }, { once: true });
+        loadingModal.hide();
+      }
     } catch (error) {
+      if (embeddedMode) hideWorkflowModal(loadingModalElement);
+      else loadingModal.hide();
       showOcrError(error instanceof Error ? error.message : 'No se pudo analizar el documento.');
     } finally {
       analyzeButton.disabled = false;
@@ -414,8 +573,10 @@
     setValue('#moneda', data.currency);
     setValue('#rawTextPreview', data.raw);
     $('#rawOcrText').value = data.raw;
-    if (data.rtnSupplier) applyProviderMatch(data.rtnSupplier, data.supplierName);
-    else if (data.supplierName) $('#emisorNombre').value = data.supplierName.slice(0, 150);
+    if (data.rtnSupplier || data.supplierName) applyProviderMatch(data.rtnSupplier, data.supplierName);
+    if (data.email) $('#emailProveedor').value = data.email.slice(0, 120);
+    if (data.phones?.length) $('#phone').value = data.phones.join(', ');
+    if (data.address) $('#direccionProveedor').value = data.address.slice(0, 255);
     if (data.rtnClient) applyCompanyMatch(data.rtnClient);
     if (data.customerLine && !data.rtnClient) $('#companyMatchMessage').textContent = `OCR leyó: “${data.customerLine.slice(0, 180)}”. Confirma qué empresa CAP compró.`;
     const fields = [
@@ -433,6 +594,14 @@
   }
 
   function showOcrError(message) {
+    if (document.body.classList.contains('embedded-entry')) {
+      const embeddedError = $('#embeddedOcrError');
+      if (embeddedError) {
+        embeddedError.textContent = `No se pudo procesar el comprobante: ${message} Cierra esta ventana y vuelve a seleccionar el archivo.`;
+        embeddedError.classList.remove('d-none');
+      }
+      return;
+    }
     $('#ocrError').textContent = message;
     $('#ocrError').classList.remove('d-none');
   }
@@ -453,5 +622,12 @@
     }
   });
 
-  setMode('ocr');
+  setMode(context.initialMode === 'manual' ? 'manual' : 'ocr');
+  if (new URLSearchParams(window.location.search).get('seleccion') === '1') {
+    consumeStagedFile().then((file) => {
+      if (!file) return;
+      setSelectedFile(file);
+      analyzeButton.click();
+    }).catch(() => {});
+  }
 })();

@@ -62,6 +62,11 @@ $accountInitial = 'U';
 $accountPhoto = '';
 $phones = [];
 $purchases = [];
+$purchaseItems = [];
+$rateDocumentId = filter_input(INPUT_GET, 'calificar', FILTER_VALIDATE_INT) ?: 0;
+$canRatePurchase = false;
+$providerFlash = $_SESSION['documento_flash'] ?? '';
+unset($_SESSION['documento_flash']);
 $search = isset($_GET['q']) && is_scalar($_GET['q']) ? trim((string) $_GET['q']) : '';
 $perPage = 10;
 $page = isset($_GET['page']) && is_scalar($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
@@ -148,6 +153,18 @@ try {
             $purchaseStatement = $pdo->prepare($purchaseSql);
             $purchaseStatement->execute($purchaseParameters);
             $purchases = $purchaseStatement->fetchAll();
+            if ($purchases) {
+                $purchaseIds = array_map(static fn(array $row): int => (int) $row['id_documento'], $purchases);
+                $marks = implode(',', array_fill(0, count($purchaseIds), '?'));
+                $detailStatement = $pdo->prepare("SELECT id_documento, descripcion, cantidad, precio_unitario, imagen_url FROM detalle_documento WHERE id_documento IN ($marks) ORDER BY id_detalle");
+                $detailStatement->execute($purchaseIds);
+                foreach ($detailStatement->fetchAll() as $item) $purchaseItems[(int) $item['id_documento']][] = $item;
+            }
+            if ($rateDocumentId > 0) {
+                $rateCheck = $pdo->prepare('SELECT 1 FROM documento_compra WHERE id_documento = :doc AND id_proveedor = :provider AND dni_usuario = :dni LIMIT 1');
+                $rateCheck->execute(['doc' => $rateDocumentId, 'provider' => $providerId, 'dni' => $token['sub']]);
+                $canRatePurchase = (bool) $rateCheck->fetchColumn();
+            }
         }
     }
 } catch (Throwable $exception) {
@@ -170,7 +187,7 @@ function proveedor_page_url(int $targetPage): string
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= $providerName ?> | Proveedores CAP</title>
+    <title><?= $providerName ?> | Biblioteca de Proveedores CAP</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&display=swap" rel="stylesheet">
     <style>
@@ -179,7 +196,7 @@ function proveedor_page_url(int $targetPage): string
         .topbar { height: 82px; background: #fff; border-bottom: 1px solid #e5e5e8; }
         .topbar nav { position: relative; height: 82px; }
         .topbar .page-title { position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; }
-        .cap-name { color: var(--cap-red); font-size: 1.4rem; font-weight: 900; letter-spacing: .08em; }
+        .cap-name { color: var(--cap-red); font-size: 1.6rem; font-weight: 900; letter-spacing: .08em; }
         .account-toggle { display: flex; align-items: center; gap: .6rem; max-width: min(38vw, 270px); padding: .3rem .75rem .3rem .35rem; color: #261919; border: 1px solid #e5b7b7; border-radius: 999px; background: #fff4f4; font-weight: 700; }
         .account-toggle:hover, .account-toggle:focus { color: #a71920; border-color: #d98989; background: #ffeded; }
         .account-avatar { display: grid; width: 2.35rem; height: 2.35rem; flex: 0 0 2.35rem; place-items: center; overflow: hidden; border-radius: 50%; color: #fff; background: var(--cap-red); font-weight: 800; }
@@ -207,7 +224,7 @@ function proveedor_page_url(int $targetPage): string
         .purchase-heading { color: #252525; font-family: "Oswald", "Arial Narrow", system-ui, sans-serif; font-size: clamp(2rem, 3vw, 2.7rem); font-weight: 700; }
         .purchase-card { height: 100%; overflow: hidden; background: #fff; border: 1px solid rgb(0 0 0 / 9%); border-radius: .8rem; box-shadow: 0 12px 28px rgb(65 0 0 / 12%); }
         .purchase-image { display: grid; height: 190px; place-items: center; overflow: hidden; background: #fff; color: #aaa; }
-        .purchase-image img { width: 100%; height: 100%; object-fit: cover; }
+        .purchase-image img { width: 100%; height: 100%; object-fit: contain; padding: .75rem; }
         .purchase-image svg { width: 3rem; height: 3rem; }
         .btn-cap { color: #fff; background: var(--cap-red); border: 0; font-weight: 650; }
         .btn-cap:hover { color: #fff; background: var(--cap-deep); }
@@ -216,17 +233,42 @@ function proveedor_page_url(int $targetPage): string
         .site-footer a { color: #33424a; }
         .back-arrow { display: grid; width: 2.75rem; height: 2.75rem; margin-bottom: .75rem; place-items: center; color: #fff; border-radius: 50%; background: rgb(80 0 0 / 35%); text-decoration: none; }
         .back-arrow:hover, .back-arrow:focus { color: #fff; background: rgb(80 0 0 / 58%); }
-        @media (max-width: 767.98px) { .provider-layout { height: auto; overflow: visible; } .provider-side { height: auto; overflow: visible; } .purchase-area { height: auto; min-height: 75vh; overflow: visible; } .purchase-scroll { overflow: visible; } .provider-info { position: static; } .provider-hero { min-height: 180px; } .topbar nav { display: grid !important; grid-template-columns: 1fr auto 1fr; } .topbar nav > a { grid-column: 1; margin: 0; } .topbar .page-title { display: block !important; position: static; grid-column: 2; transform: none; font-size: 1.35rem; } .topbar nav > div { grid-column: 3; justify-self: end; } }
+        @media (max-width: 767.98px) {
+            .topbar { height: auto; min-height: 82px; }
+            .topbar nav { display: grid !important; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); height: auto; min-height: 82px; gap: .5rem !important; }
+            .topbar nav > a { grid-column: 1; margin: 0; min-width: 0; }
+            .topbar .page-title { display: block !important; position: static; grid-column: 2; max-width: 100%; min-width: 0; transform: none; white-space: normal; text-align: center; font-size: clamp(1rem, 3.5vw, 1.35rem); line-height: 1.05; }
+            .topbar nav > div { grid-column: 3; justify-self: end; min-width: 0; }
+            .account-toggle { width: auto; height: auto; justify-content: center; max-width: 100%; min-width: 0; padding: .375rem .75rem; }
+            .account-toggle > .text-start, .account-toggle::after { display: none !important; }
+            .provider-layout { height: auto; overflow: visible; }
+            .provider-side { height: auto; overflow: visible; }
+            .purchase-area { height: auto; min-height: 75vh; overflow: visible; }
+            .purchase-scroll { overflow: visible; }
+            .purchase-live-wrap { flex: 1 1 100%; width: 100%; max-width: none; min-width: 0; }
+            .provider-info { position: static; }
+            .provider-hero { min-height: 180px; }
+        }
+        @media (max-width: 575.98px) {
+            .purchase-grid > [class*="col-"] { flex: 0 0 auto; width: 50%; }
+            .purchase-image { height: 110px; }
+            .purchase-card > .p-3 { padding: .65rem !important; }
+            .purchase-card .small { font-size: .72rem; }
+            .purchase-card .border.rounded-3 { gap: .4rem !important; padding: .4rem !important; }
+            .purchase-card .border.rounded-3 img,
+            .purchase-card .border.rounded-3 [aria-hidden="true"] { width: 42px !important; height: 42px !important; flex: 0 0 42px; }
+        }
     </style>
+    <link href="../assets/css/mobile-header.css?v=4" rel="stylesheet">
 </head>
 <body data-csrf-token="<?= proveedor_escape($_SESSION['csrf_token']) ?>">
 <header class="topbar">
     <nav class="container-fluid px-3 px-lg-4 d-flex align-items-center justify-content-between gap-3 py-3">
         <a class="d-flex align-items-center gap-2 text-decoration-none" href="index.php" aria-label="Inicio CAP">
-            <svg width="40" height="44" viewBox="0 0 48 52" aria-hidden="true"><polygon points="24,2 44,13 44,39 24,50 4,39 4,13" fill="#fff" stroke="#c62828" stroke-width="4" stroke-linejoin="round"/></svg>
+            <img src="../assets/img/cap-emblem.svg" width="40" height="44" alt="">
             <span class="cap-name">CAP</span>
         </a>
-        <h1 class="page-title mb-0 d-none d-sm-block">Proveedores</h1>
+        <h1 class="page-title mb-0 d-none d-sm-block">Biblioteca de Proveedores</h1>
         <div class="dropdown account-menu">
             <button class="btn account-toggle dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Abrir menú de perfil">
                 <span class="account-avatar"><?php if ($accountPhoto !== ''): ?><img src="<?= proveedor_escape($accountPhoto) ?>" alt=""><?php else: ?><?= proveedor_escape($accountInitial) ?><?php endif; ?></span>
@@ -284,24 +326,33 @@ function proveedor_page_url(int $targetPage): string
         </div>
         </div>
         <div class="purchase-scroll">
+        <?php if ($providerFlash !== ''): ?><div class="alert alert-success" role="status"><?= proveedor_escape($providerFlash) ?></div><?php endif; ?>
         <?php if (!$purchases): ?>
             <div class="purchase-empty"><h3 class="h5">Aún no hay compras registradas</h3><p class="text-secondary mb-0">Las facturas y recibos asociados a este proveedor aparecerán aquí.</p></div>
         <?php else: ?>
-            <div class="row g-3 g-xl-4">
+            <div class="row g-3 g-xl-4 purchase-grid">
                 <?php foreach ($purchases as $purchase): ?>
                     <div class="col-12 col-sm-6 col-xl-4" data-live-search-item="<?= proveedor_escape(mb_strtolower(implode(' ', [$purchase['tipo_documento'], $purchase['numero_documento'] ?? '', $purchase['empresa'], $purchase['productos'] ?? '', date('d/m/Y', strtotime($purchase['fecha_documento']))]), 'UTF-8')) ?>">
                         <article class="purchase-card">
                             <div class="purchase-image">
-                                <?php if (proveedor_safe_media_url($purchase['imagen_url'] ?? '') !== ''): ?><img src="<?= proveedor_escape(proveedor_safe_media_url($purchase['imagen_url'])) ?>" alt="Documento de compra">
+                                <?php $primaryItem = $purchaseItems[(int) $purchase['id_documento']][0] ?? null; ?>
+                                <?php if ($primaryItem && proveedor_safe_media_url($primaryItem['imagen_url'] ?? '') !== ''): ?><img src="<?= proveedor_escape(proveedor_safe_media_url($primaryItem['imagen_url'])) ?>" alt="Imagen de referencia: <?= proveedor_escape($primaryItem['descripcion']) ?>" loading="lazy">
                                 <?php else: ?><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 2h9l5 5v15H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"></path><path d="M14 2v6h6M8 13h8M8 17h8"></path></svg><?php endif; ?>
                             </div>
                             <div class="p-3">
                                 <?php $documentLabels = ['factura' => 'Factura', 'recibo' => 'Recibo', 'recibo_honorarios' => 'Recibo por honorarios', 'amazon' => 'Compra de Amazon', 'otro' => 'Otro comprobante']; ?>
                                 <div class="d-flex justify-content-between gap-2 align-items-start"><h3 class="h6 fw-bold mb-1"><?= proveedor_escape($documentLabels[$purchase['tipo_documento']] ?? 'Comprobante') ?></h3><span class="badge text-bg-light"><?= proveedor_escape(strtoupper($purchase['metodo_ingreso'])) ?></span></div>
-                                <p class="small text-secondary mb-2">N.º <?= proveedor_escape($purchase['numero_documento'] ?: ($purchase['referencia_externa'] ?: 'No indicado')) ?> · <?= proveedor_escape(date('d/m/Y', strtotime($purchase['fecha_documento']))) ?></p>
+                                <p class="small text-secondary mb-2"><strong>Factura/recibo:</strong> <?= proveedor_escape($purchase['numero_documento'] ?: ($purchase['referencia_externa'] ?: 'No indicado')) ?><br><strong>Fecha:</strong> <?= proveedor_escape(date('d/m/Y', strtotime($purchase['fecha_documento']))) ?></p>
                                 <?php if (!empty($purchase['nombre_emisor']) && $purchase['nombre_emisor'] !== $provider['nombre_empresa']): ?><p class="small mb-2">Vendedor indicado: <?= proveedor_escape($purchase['nombre_emisor']) ?></p><?php endif; ?>
                                 <p class="small mb-2"><strong>Empresa:</strong> <?= proveedor_escape($purchase['empresa']) ?></p>
-                                <?php if (!empty($purchase['productos'])): ?><p class="small text-secondary mb-2"><strong>Detalle:</strong> <?= proveedor_escape($purchase['productos']) ?></p><?php endif; ?>
+                                <?php foreach ($purchaseItems[(int) $purchase['id_documento']] ?? [] as $item): ?>
+                                    <div class="border rounded-3 p-2 mb-2 d-flex gap-2 align-items-center">
+                                        <?php if (proveedor_safe_media_url($item['imagen_url'] ?? '') !== ''): ?><img src="<?= proveedor_escape(proveedor_safe_media_url($item['imagen_url'])) ?>" alt="Imagen de referencia: <?= proveedor_escape($item['descripcion']) ?>" loading="lazy" style="width:64px;height:64px;object-fit:contain;background:#f7f7f7;border-radius:.5rem">
+                                        <?php else: ?><div aria-hidden="true" class="d-grid place-items-center text-secondary" style="width:64px;height:64px;background:#f7f7f7;border-radius:.5rem">📦</div><?php endif; ?>
+                                        <div class="small"><strong><?= proveedor_escape($item['descripcion']) ?></strong><?php if ($item['cantidad'] !== null): ?><br>Cantidad: <?= proveedor_escape($item['cantidad']) ?><?php endif; ?></div>
+                                    </div>
+                                <?php endforeach; ?>
+                                <?php if (empty($purchaseItems[(int) $purchase['id_documento']])): ?><p class="small text-secondary mb-2"><strong>Producto o servicio:</strong> <?= proveedor_escape($purchase['productos'] ?? 'Sin detalle') ?></p><?php endif; ?>
                                 <div class="d-flex justify-content-between border-top pt-2 mt-2"><span class="fw-semibold">Total</span><strong><?= proveedor_escape($purchase['moneda']) ?> <?= number_format((float) $purchase['total'], 2) ?></strong></div>
                                 <?php if (proveedor_safe_media_url($purchase['imagen_url'] ?? '') !== ''): ?><a class="btn btn-outline-danger btn-sm mt-3" href="<?= proveedor_escape(proveedor_safe_media_url($purchase['imagen_url'])) ?>" target="_blank" rel="noopener noreferrer">Ver documento</a><?php endif; ?>
                             </div>
@@ -321,6 +372,9 @@ function proveedor_page_url(int $targetPage): string
         </div>
     </main>
 </div></div>
+<?php endif; ?>
+<?php if ($canRatePurchase && $provider): ?>
+<div class="modal fade" id="ratePurchaseModal" tabindex="-1" aria-labelledby="ratePurchaseTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><form method="post" action="../backend/controllers/calificar_proveedor.php"><div class="modal-header"><h2 class="modal-title h5" id="ratePurchaseTitle">¿Cómo fue el producto o servicio?</h2><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Cerrar"></button></div><div class="modal-body"><input type="hidden" name="csrf_token" value="<?= proveedor_escape($_SESSION['csrf_token']) ?>"><input type="hidden" name="id_documento" value="<?= (int) $rateDocumentId ?>"><input type="hidden" name="id_proveedor" value="<?= (int) $provider['id_proveedor'] ?>"><label class="form-label" for="ratingStars">Calificación</label><select class="form-select" id="ratingStars" name="estrellas" required><option value="">Elige de 1 a 5</option><option value="1">1 · Muy mala</option><option value="2">2 · Mala</option><option value="3">3 · Regular</option><option value="4">4 · Buena</option><option value="5">5 · Excelente</option></select><label class="form-label mt-3" for="ratingComment">Comentario (opcional)</label><textarea class="form-control" id="ratingComment" name="comentario" maxlength="255" rows="3"></textarea></div><div class="modal-footer"><button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Ahora no</button><button class="btn btn-danger" type="submit">Guardar calificación</button></div></form></div></div></div><script>window.addEventListener('load',()=>{const m=document.getElementById('ratePurchaseModal');bootstrap.Modal.getOrCreateInstance(m).show();m.addEventListener('hidden.bs.modal',()=>{const u=new URL(location.href);u.searchParams.delete('calificar');history.replaceState({},'',u);});});</script>
 <?php endif; ?>
 <script src="../assets/js/renovar-sesion.js" defer></script>
 <script src="../assets/js/buscar-historial.js" defer></script>

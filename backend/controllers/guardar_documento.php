@@ -21,9 +21,10 @@ function form_value(string $key, int $max = 500): string
     return mb_substr($value, 0, $max, 'UTF-8');
 }
 
-function form_amount(string $key): float
+function form_amount(string $key): ?float
 {
-    $value = isset($_POST[$key]) && is_scalar($_POST[$key]) ? (string) $_POST[$key] : '0';
+    $value = isset($_POST[$key]) && is_scalar($_POST[$key]) ? trim((string) $_POST[$key]) : '';
+    if ($value === '') return null;
     if (!preg_match('/^\d{1,10}(?:\.\d{1,2})?$/', $value)) {
         throw new InvalidArgumentException('Revisa los importes: usa números y punto decimal.');
     }
@@ -33,7 +34,9 @@ function form_amount(string $key): float
 function fail_form(string $message): void
 {
     $_SESSION['documento_flash'] = $message;
-    header('Location: ../../frontend/ingresar_documento.php');
+    $embedded = isset($_POST['desde_index_modal']) && $_POST['desde_index_modal'] === '1';
+    $mode = isset($_POST['metodo_ingreso']) && $_POST['metodo_ingreso'] === 'manual' ? 'manual' : 'ocr';
+    header('Location: ../../frontend/ingresar_documento.php?modo=' . $mode . ($embedded ? '&embedded=1' : ''));
     exit;
 }
 
@@ -52,8 +55,6 @@ try {
     $rawOcr = form_value('texto_ocr', 60000);
     $method = form_value('metodo_ingreso', 10);
     $companyId = filter_var($_POST['id_empresa_grupo'] ?? null, FILTER_VALIDATE_INT);
-    $providerId = filter_var($_POST['id_proveedor'] ?? null, FILTER_VALIDATE_INT);
-    $categoryId = filter_var($_POST['id_categoria'] ?? null, FILTER_VALIDATE_INT);
 
     if (!in_array($type, $allowedTypes, true)) throw new InvalidArgumentException('Selecciona un tipo de comprobante válido.');
     if (!in_array($method, ['ocr', 'manual'], true)) throw new InvalidArgumentException('Método de ingreso no válido.');
@@ -79,12 +80,16 @@ try {
     $shipping = form_amount('costo_envio');
     $withholding = form_amount('retencion_isr');
     $total = form_amount('total');
-    if ($total < 0 || $subtotal < 0) throw new InvalidArgumentException('Los importes no pueden ser negativos.');
+    foreach ([$total, $subtotal, $exento, $exonerado, $gravado15, $isv, $discount, $shipping, $withholding] as $amount) {
+        if ($amount !== null && $amount < 0) throw new InvalidArgumentException('Los importes no pueden ser negativos.');
+    }
+    if ($total === null) throw new InvalidArgumentException('El total pagado es obligatorio.');
 
     $itemDescriptions = isset($_POST['detalle_descripcion']) && is_array($_POST['detalle_descripcion']) ? $_POST['detalle_descripcion'] : [];
     $itemQuantities = isset($_POST['detalle_cantidad']) && is_array($_POST['detalle_cantidad']) ? $_POST['detalle_cantidad'] : [];
     $itemPrices = isset($_POST['detalle_precio']) && is_array($_POST['detalle_precio']) ? $_POST['detalle_precio'] : [];
     $itemDiscounts = isset($_POST['detalle_descuento']) && is_array($_POST['detalle_descuento']) ? $_POST['detalle_descuento'] : [];
+    $itemImages = isset($_POST['detalle_imagen_url']) && is_array($_POST['detalle_imagen_url']) ? $_POST['detalle_imagen_url'] : [];
     if (count($itemDescriptions) > 30) throw new InvalidArgumentException('Puedes guardar hasta 30 líneas de producto por comprobante.');
     $items = [];
     foreach ($itemDescriptions as $index => $descriptionValue) {
@@ -93,17 +98,27 @@ try {
         if ($description === '') continue;
         $quantityValue = $itemQuantities[$index] ?? '';
         $priceValue = $itemPrices[$index] ?? '';
-        if (!is_scalar($quantityValue) || !is_scalar($priceValue)
-            || !preg_match('/^\d{1,8}(?:\.\d{1,2})?$/', (string) $quantityValue)
-            || !preg_match('/^\d{1,10}(?:\.\d{1,2})?$/', (string) $priceValue)) {
-            throw new InvalidArgumentException('Completa cantidad y precio unitario en cada línea de producto.');
+        if (!is_scalar($quantityValue) || !is_scalar($priceValue)) throw new InvalidArgumentException('Revisa la cantidad y precio unitario.');
+        $quantityValue = trim((string) $quantityValue);
+        $priceValue = trim((string) $priceValue);
+        if (($quantityValue !== '' && !preg_match('/^\d{1,8}(?:\.\d{1,2})?$/', $quantityValue))
+            || ($priceValue !== '' && !preg_match('/^\d{1,10}(?:\.\d{1,2})?$/', $priceValue))) {
+            throw new InvalidArgumentException('La cantidad y el precio deben ser números positivos si aparecen en el comprobante.');
         }
-        $discountValue = $itemDiscounts[$index] ?? '0';
-        if (!is_scalar($discountValue) || !preg_match('/^\d{1,10}(?:\.\d{1,2})?$/', (string) $discountValue)) {
+        $discountValue = $itemDiscounts[$index] ?? '';
+        if (!is_scalar($discountValue)) {
             throw new InvalidArgumentException('Revisa los descuentos de las líneas de producto.');
         }
-        $items[] = ['description' => $description, 'quantity' => (float) $quantityValue,
-            'price' => (float) $priceValue, 'discount' => (float) $discountValue];
+        $discountValue = trim((string) $discountValue);
+        if ($discountValue !== '' && !preg_match('/^\d{1,10}(?:\.\d{1,2})?$/', $discountValue)) throw new InvalidArgumentException('Revisa los descuentos de las líneas de producto.');
+        $imageUrl = $itemImages[$index] ?? '';
+        if (!is_scalar($imageUrl)) throw new InvalidArgumentException('La URL de imagen no es válida.');
+        $imageUrl = trim((string) $imageUrl);
+        if ($imageUrl !== '' && (strlen($imageUrl) > 255 || !filter_var($imageUrl, FILTER_VALIDATE_URL) || strtolower((string) parse_url($imageUrl, PHP_URL_SCHEME)) !== 'https')) {
+            throw new InvalidArgumentException('La imagen de referencia debe ser una URL HTTPS válida de hasta 255 caracteres.');
+        }
+        $items[] = ['description' => $description, 'quantity' => $quantityValue !== '' ? (float) $quantityValue : null,
+            'price' => $priceValue !== '' ? (float) $priceValue : null, 'discount' => $discountValue !== '' ? (float) $discountValue : null, 'image' => $imageUrl ?: null];
     }
 
     $pdo = database();
@@ -141,41 +156,16 @@ try {
         $savedPath = 'uploads/documentos/' . $filename;
     }
 
+    $phoneInput = form_value('telefono_proveedor', 64);
+    $phones = [];
+    $providerEmail = form_value('correo_proveedor', 120);
+    $providerAddress = form_value('direccion_proveedor', 255);
+    $phoneSource = form_value('fuente_telefono', 500);
+
     $pdo->beginTransaction();
     $linkedProviderId = null;
-    $selectedProviderId = $providerId ?: null;
-    if ($selectedProviderId) {
-        $existingProvider = $pdo->prepare('SELECT id_proveedor, rtn, nombre_empresa FROM proveedor WHERE id_proveedor = :id LIMIT 1');
-        $existingProvider->execute(['id' => $selectedProviderId]);
-        $provider = $existingProvider->fetch();
-        if (!$provider) throw new InvalidArgumentException('El proveedor seleccionado ya no existe.');
-        if ($emitterRtn !== '' && preg_replace('/\D/', '', (string) $provider['rtn']) !== $emitterRtn) {
-            throw new InvalidArgumentException('El RTN capturado no coincide con el proveedor seleccionado.');
-        }
-        $linkedProviderId = (int) $provider['id_proveedor'];
-        $emitterName = (string) $provider['nombre_empresa'];
-        if ($emitterRtn === '') $emitterRtn = preg_replace('/\D/', '', (string) $provider['rtn']);
-    } elseif ($emitterRtn !== '') {
-        $existingProvider = $pdo->prepare('SELECT id_proveedor, nombre_empresa FROM proveedor WHERE rtn = :rtn LIMIT 1');
-        $existingProvider->execute(['rtn' => $emitterRtn]);
-        $provider = $existingProvider->fetch();
-        if ($provider) {
-            $linkedProviderId = (int) $provider['id_proveedor'];
-            $emitterName = (string) $provider['nombre_empresa'];
-        } else {
-            if (!$categoryId) throw new InvalidArgumentException('Selecciona una categoría para registrar al proveedor nuevo con RTN.');
-            $categoryCheck = $pdo->prepare('SELECT 1 FROM categoria WHERE id_categoria = :id');
-            $categoryCheck->execute(['id' => $categoryId]);
-            if (!$categoryCheck->fetchColumn()) throw new InvalidArgumentException('La categoría seleccionada no existe.');
-            $insertProvider = $pdo->prepare(
-                'INSERT INTO proveedor (rtn, nombre_empresa, id_categoria, direccion, dni_usuario_registro)
-                 VALUES (:rtn, :name, :category, :address, :dni)'
-            );
-            $insertProvider->execute(['rtn' => $emitterRtn, 'name' => $emitterName, 'category' => $categoryId,
-                'address' => form_value('direccion_proveedor', 255) ?: null, 'dni' => $token['sub']]);
-            $linkedProviderId = (int) $pdo->lastInsertId();
-        }
-    } elseif ($type === 'amazon') {
+    $providerIsNew = false;
+    if ($type === 'amazon') {
         // Amazon puede ser el canal de compra aunque el comprobante identifique
         // a un vendedor tercero. Conserva su nombre real en nombre_emisor y
         // agrupa el historial bajo el proveedor de la plataforma.
@@ -197,13 +187,74 @@ try {
             $platformId = $pdo->lastInsertId();
         }
         $linkedProviderId = (int) $platformId;
-    }
+    } else {
+        $provider = null;
+        if ($emitterRtn !== '') {
+            $providerByRtn = $pdo->prepare('SELECT id_proveedor, rtn, nombre_empresa FROM proveedor WHERE rtn = :rtn LIMIT 1 FOR UPDATE');
+            $providerByRtn->execute(['rtn' => $emitterRtn]);
+            $provider = $providerByRtn->fetch() ?: null;
+        }
+        if (!$provider && $emitterRtn !== '') {
+            $providerByName = $pdo->prepare(
+                'SELECT id_proveedor, rtn, nombre_empresa FROM proveedor
+                  WHERE LOWER(TRIM(nombre_empresa)) = LOWER(TRIM(:name))
+                    AND (rtn IS NULL OR rtn = :rtn_match)
+                  LIMIT 1 FOR UPDATE'
+            );
+            $providerByName->execute(['name' => $emitterName, 'rtn_match' => $emitterRtn]);
+            $provider = $providerByName->fetch() ?: null;
+        } elseif (!$provider) {
+            $providerByName = $pdo->prepare(
+                'SELECT id_proveedor, rtn, nombre_empresa FROM proveedor
+                  WHERE LOWER(TRIM(nombre_empresa)) = LOWER(TRIM(:name)) LIMIT 1 FOR UPDATE'
+            );
+            $providerByName->execute(['name' => $emitterName]);
+            $provider = $providerByName->fetch() ?: null;
+        }
 
-    $phone = preg_replace('/\D/', '', form_value('telefono_proveedor', 32));
-    if ($phone !== '' && !preg_match('/^[23789][0-9]{7}$/', $phone)) throw new InvalidArgumentException('El teléfono del proveedor debe tener 8 dígitos de Honduras.');
-    $phoneSource = form_value('fuente_telefono', 500);
+        if ($provider) {
+            $linkedProviderId = (int) $provider['id_proveedor'];
+            $emitterName = (string) $provider['nombre_empresa'];
+            if ($emitterRtn === '') $emitterRtn = preg_replace('/\D/', '', (string) $provider['rtn']);
+        } else {
+            if ($providerEmail !== '' && !filter_var($providerEmail, FILTER_VALIDATE_EMAIL)) {
+                throw new InvalidArgumentException('El correo del proveedor nuevo no tiene un formato válido.');
+            }
+            if ($phoneInput !== '') {
+                preg_match_all('/(?:\+?504[\s-]?)?([23789]\d{3}[\s-]?\d{4})/', $phoneInput, $phoneMatches);
+                $phones = array_values(array_unique(array_map(static fn(string $phone): string => preg_replace('/\D/', '', $phone), $phoneMatches[1] ?? [])));
+                $unparsedPhoneText = preg_replace('/(?:\+?504[\s-]?)?[23789]\d{3}[\s-]?\d{4}|[\s,;\/|]+/', '', $phoneInput);
+                if ($unparsedPhoneText !== '' || count($phones) === 0 || count($phones) > 8) {
+                    throw new InvalidArgumentException('Ingresa uno o varios teléfonos hondureños de 8 dígitos, separados por coma.');
+                }
+            }
+            $categoryQuery = $pdo->prepare('SELECT id_categoria FROM categoria WHERE nombre = :name LIMIT 1');
+            $categoryQuery->execute(['name' => 'Sin clasificar']);
+            $categoryId = $categoryQuery->fetchColumn();
+            if (!$categoryId) {
+                $pdo->prepare('INSERT IGNORE INTO categoria (nombre) VALUES (:name)')->execute(['name' => 'Sin clasificar']);
+                $categoryQuery->execute(['name' => 'Sin clasificar']);
+                $categoryId = $categoryQuery->fetchColumn();
+            }
+            if (!$categoryId) throw new RuntimeException('No se pudo asignar una categoría provisional al proveedor.');
+            $insertProvider = $pdo->prepare(
+                'INSERT INTO proveedor (rtn, nombre_empresa, id_categoria, direccion, correo, dni_usuario_registro)
+                 VALUES (:rtn, :name, :category, :address, :email, :dni)'
+            );
+            $insertProvider->execute([
+                'rtn' => $emitterRtn !== '' ? $emitterRtn : null,
+                'name' => $emitterName,
+                'category' => (int) $categoryId,
+                'address' => $providerAddress !== '' ? $providerAddress : null,
+                'email' => $providerEmail !== '' ? $providerEmail : null,
+                'dni' => $token['sub'],
+            ]);
+            $linkedProviderId = (int) $pdo->lastInsertId();
+            $providerIsNew = true;
+        }
+    }
     $sourceOrigin = $phoneSource !== '' ? 'internet' : ($method === 'ocr' ? 'documento' : 'manual');
-    if ($phone !== '' && $linkedProviderId && $emitterName !== 'Amazon Marketplace') {
+    if ($providerIsNew && $phones && $type !== 'amazon') {
         if ($phoneSource !== '' && (!filter_var($phoneSource, FILTER_VALIDATE_URL) || strtolower((string) parse_url($phoneSource, PHP_URL_SCHEME)) !== 'https')) {
             throw new InvalidArgumentException('La fuente del teléfono debe ser un enlace HTTPS válido.');
         }
@@ -212,10 +263,11 @@ try {
              VALUES (:provider, :phone, :type, 0, :origin, :source, :verified)
              ON DUPLICATE KEY UPDATE origen_dato = VALUES(origen_dato), fuente_url = VALUES(fuente_url), verificado_en = VALUES(verificado_en)'
         );
-        $insertPhone->execute(['provider' => $linkedProviderId, 'phone' => $phone, 'type' => str_starts_with($phone, '2') ? 'telefono' : 'celular',
-            'origin' => $sourceOrigin, 'source' => $phoneSource ?: null, 'verified' => $phoneSource !== '' ? date('Y-m-d') : null]);
+        foreach ($phones as $phone) {
+            $insertPhone->execute(['provider' => $linkedProviderId, 'phone' => $phone, 'type' => str_starts_with($phone, '2') ? 'telefono' : 'celular',
+                'origin' => $sourceOrigin, 'source' => $phoneSource ?: null, 'verified' => $phoneSource !== '' ? date('Y-m-d') : null]);
+        }
     }
-
     $insertDocument = $pdo->prepare(
         'INSERT INTO documento_compra (
             id_proveedor, nombre_emisor, rtn_emisor, id_empresa_grupo, dni_usuario, rtn_cliente,
@@ -245,19 +297,25 @@ try {
     $documentId = (int) $pdo->lastInsertId();
     if ($items) {
         $insertItem = $pdo->prepare(
-            'INSERT INTO detalle_documento (id_documento, descripcion, cantidad, precio_unitario, descuento)
-             VALUES (:document, :description, :quantity, :price, :discount)'
+            'INSERT INTO detalle_documento (id_documento, descripcion, cantidad, precio_unitario, descuento, imagen_url)
+             VALUES (:document, :description, :quantity, :price, :discount, :image)'
         );
         foreach ($items as $item) {
             $insertItem->execute(['document' => $documentId, 'description' => $item['description'],
-                'quantity' => $item['quantity'], 'price' => $item['price'], 'discount' => $item['discount']]);
+                'quantity' => $item['quantity'], 'price' => $item['price'], 'discount' => $item['discount'], 'image' => $item['image']]);
         }
     }
     $pdo->commit();
 
     $_SESSION['documento_flash'] = 'Compra guardada correctamente.';
     if ($linkedProviderId) {
-        header('Location: ../../frontend/proveedor.php?id=' . $linkedProviderId);
+        $destination = '../../frontend/proveedor.php?id=' . $linkedProviderId . '&calificar=' . $documentId;
+        if (form_value('desde_index_modal', 1) === '1') {
+            header('Content-Type: text/html; charset=UTF-8');
+            echo '<!doctype html><html lang="es"><meta charset="utf-8"><script>window.top.location.replace(' . json_encode($destination, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ')</script></html>';
+            exit;
+        }
+        header('Location: ' . $destination);
     } else {
         header('Location: ../../frontend/index.php');
     }

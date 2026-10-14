@@ -13,16 +13,16 @@ INSERT INTO usuario (
 SELECT demo.dni, demo.nombre, demo.segundo_nombre, demo.apellido, demo.segundo_apellido,
        demo.celular, demo.correo, cargo.id_cargo, empresa.id_empresa_grupo, 1
 FROM (
-  SELECT '0801199002001' dni, 'Carlos' nombre, 'Andrés' segundo_nombre, 'Mejía' apellido, 'Paz' segundo_apellido, '90001001' celular, 'carlos.mejia@example.com' correo, 'Oficial de compras internas' cargo, 'Mansiago' empresa
-  UNION ALL SELECT '0801199002002', 'María', 'José', 'Castro', 'López', '90001002', 'maria.castro@example.com', 'Gerente general', 'Tecnicentro Didasa'
-  UNION ALL SELECT '0801199002003', 'José', 'Manuel', 'Reyes', 'Cruz', '90001003', 'jose.reyes@example.com', 'Oficial de compras internacionales', 'Japan HN'
-  UNION ALL SELECT '0801199002004', 'Ana', 'Lucía', 'Flores', NULL, '90001004', 'ana.flores@example.com', 'Gerente en Ventas', 'S&M'
-  UNION ALL SELECT '0801199002005', 'Luis', 'Fernando', 'Pineda', 'Díaz', '90001005', 'luis.pineda@example.com', 'Oficial de compras internas', 'Blessing'
-  UNION ALL SELECT '0801199002006', 'Sofía', 'Isabel', 'Vásquez', 'Mena', '90001006', 'sofia.vasquez@example.com', 'Gerente general', 'Mansiago'
-  UNION ALL SELECT '0801199002007', 'Daniel', 'Alberto', 'Gómez', 'Rivas', '90001007', 'daniel.gomez@example.com', 'Oficial de compras internacionales', 'Tecnicentro Didasa'
-  UNION ALL SELECT '0801199002008', 'Valeria', 'Elena', 'Molina', 'Paz', '90001008', 'valeria.molina@example.com', 'Gerente en Ventas', 'Japan HN'
-  UNION ALL SELECT '0801199002009', 'Pedro', 'José', 'Santos', NULL, '90001009', 'pedro.santos@example.com', 'Pato de goma', 'S&M'
-  UNION ALL SELECT '0801199002010', 'Gabriela', 'María', 'Ramos', 'Reyes', '90001010', 'gabriela.ramos@example.com', 'Oficial de compras internas', 'Blessing'
+  SELECT '0801199002001' dni, 'Carlos' nombre, 'Andrés' segundo_nombre, 'Mejía' apellido, 'Paz' segundo_apellido, '90001001' celular, 'carlos.mejia@example.com' correo, 'Oficial de compras internas' cargo, 'DISTRIBUIDORA MANSIAGO' empresa
+  UNION ALL SELECT '0801199002002', 'María', 'José', 'Castro', 'López', '90001002', 'maria.castro@example.com', 'Gerente general', 'TECNICENTRO DIDASA'
+  UNION ALL SELECT '0801199002003', 'José', 'Manuel', 'Reyes', 'Cruz', '90001003', 'jose.reyes@example.com', 'Oficial de compras internacionales', 'JAPAN HN S.A. DE C.V.'
+  UNION ALL SELECT '0801199002004', 'Ana', 'Lucía', 'Flores', NULL, '90001004', 'ana.flores@example.com', 'Gerente en Ventas', 'INVERSIONES CASTRO'
+  UNION ALL SELECT '0801199002005', 'Luis', 'Fernando', 'Pineda', 'Díaz', '90001005', 'luis.pineda@example.com', 'Oficial de compras internas', 'AUTOREPUESTOS BLESSING'
+  UNION ALL SELECT '0801199002006', 'Sofía', 'Isabel', 'Vásquez', 'Mena', '90001006', 'sofia.vasquez@example.com', 'Gerente general', 'DISTRIBUIDORA MANSIAGO'
+  UNION ALL SELECT '0801199002007', 'Daniel', 'Alberto', 'Gómez', 'Rivas', '90001007', 'daniel.gomez@example.com', 'Oficial de compras internacionales', 'TECNICENTRO DIDASA'
+  UNION ALL SELECT '0801199002008', 'Valeria', 'Elena', 'Molina', 'Paz', '90001008', 'valeria.molina@example.com', 'Gerente en Ventas', 'JAPAN HN S.A. DE C.V.'
+  UNION ALL SELECT '0801199002009', 'Pedro', 'José', 'Santos', NULL, '90001009', 'pedro.santos@example.com', 'Pato de goma', 'INVERSIONES CASTRO'
+  UNION ALL SELECT '0801199002010', 'Gabriela', 'María', 'Ramos', 'Reyes', '90001010', 'gabriela.ramos@example.com', 'Oficial de compras internas', 'AUTOREPUESTOS BLESSING'
 ) demo
 JOIN empresa_grupo empresa ON empresa.nombre = demo.empresa
 JOIN cargo ON cargo.nombre = demo.cargo
@@ -127,7 +127,7 @@ FROM (
   UNION ALL SELECT 10, 1120.00 UNION ALL SELECT 11, 640.00 UNION ALL SELECT 12, 1980.00
 ) m
 JOIN proveedor p ON p.rtn IN ('99999999999991', '99999999999992', '99999999999993', '99999999999994')
-JOIN empresa_grupo empresa ON empresa.nombre = ELT(1 + MOD(m.n + p.id_proveedor, 5), 'Mansiago', 'Tecnicentro Didasa', 'Japan HN', 'S&M', 'Blessing')
+JOIN empresa_grupo empresa ON empresa.nombre = ELT(1 + MOD(m.n + p.id_proveedor, 7), 'DISTRIBUIDORA MANSIAGO', 'TECNICENTRO DIDASA', 'JAPAN HN S.A. DE C.V.', 'INVERSIONES CASTRO', 'AUTOREPUESTOS BLESSING', 'AUTOCARROCERIA BLESSING', 'CAP (SINDY CASTRO)')
 JOIN usuario ON usuario.dni = CONCAT('0801199002', LPAD(1 + MOD(m.n + p.id_proveedor, 10), 3, '0'))
 ON DUPLICATE KEY UPDATE
   fecha_documento = VALUES(fecha_documento), subtotal = VALUES(subtotal), isv = VALUES(isv), total = VALUES(total),
@@ -149,7 +149,7 @@ FROM (
   SELECT 1 n UNION ALL SELECT 2
 ) m
 JOIN proveedor p ON p.rtn BETWEEN '88888888888801' AND '88888888888818'
-JOIN empresa_grupo empresa ON empresa.nombre = ELT(1 + MOD(m.n + p.id_proveedor, 5), 'Mansiago', 'Tecnicentro Didasa', 'Japan HN', 'S&M', 'Blessing')
+JOIN empresa_grupo empresa ON empresa.nombre = ELT(1 + MOD(m.n + p.id_proveedor, 7), 'DISTRIBUIDORA MANSIAGO', 'TECNICENTRO DIDASA', 'JAPAN HN S.A. DE C.V.', 'INVERSIONES CASTRO', 'AUTOREPUESTOS BLESSING', 'AUTOCARROCERIA BLESSING', 'CAP (SINDY CASTRO)')
 JOIN usuario ON usuario.dni = CONCAT('0801199002', LPAD(1 + MOD(m.n + p.id_proveedor, 10), 3, '0'))
 ON DUPLICATE KEY UPDATE
   fecha_documento = VALUES(fecha_documento), subtotal = VALUES(subtotal), isv = VALUES(isv), total = VALUES(total),

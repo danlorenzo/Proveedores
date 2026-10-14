@@ -29,7 +29,7 @@ try {
           ORDER BY d.nombre, c.nombre'
     )->fetchAll();
     $empresas = $pdo->query(
-        "SELECT id_empresa_grupo, nombre FROM empresa_grupo WHERE nombre <> 'Empresa Demo CAP' ORDER BY nombre"
+        'SELECT id_empresa_grupo, nombre FROM empresa_grupo ORDER BY nombre'
     )->fetchAll();
 } catch (Throwable $exception) {
     error_log($exception->getMessage());
@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#c62828">
-    <title>Iniciar sesión | Proveedores CAP</title>
+    <title>Iniciar sesión | Biblioteca de Proveedores CAP</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&display=swap" rel="stylesheet">
@@ -129,10 +129,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login
         .brand-panel::after { width: 300px; height: 300px; right: -100px; bottom: -85px; }
         .brand-mark { position: relative; z-index: 1; display: flex; align-items: center; gap: .8rem; }
         .brand-symbol {
-            display: grid; width: 52px; height: 52px; place-items: center;
-            border: 3px solid #fff; border-radius: 16px; font-weight: 800; font-size: 1.3rem;
+            display: block; width: 52px; height: 56px; object-fit: contain;
+            filter: brightness(0) invert(1);
         }
-        .brand-name { font-size: 2rem; font-weight: 900; letter-spacing: .07em; }
+        .brand-name { font-size: 2.2rem; font-weight: 900; letter-spacing: .07em; }
         .brand-copy { position: relative; z-index: 1; max-width: 430px; }
         .brand-copy h1 { font-family: "Oswald", "Arial Narrow", system-ui, sans-serif; font-size: clamp(2.2rem, 4vw, 3.8rem); font-weight: 700; letter-spacing: .015em; line-height: 1.08; }
         .form-panel { display: flex; align-items: center; justify-content: center; padding: 2rem 1.25rem; }
@@ -168,12 +168,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login
     <div class="row g-0 login-shell">
         <section class="col-lg-6 brand-panel" aria-label="Biblioteca de Proveedores CAP">
             <div class="brand-mark">
-                <span class="brand-symbol" aria-hidden="true">C</span>
+                <img class="brand-symbol" src="../assets/img/cap-emblem.svg" alt="">
                 <span class="brand-name">CAP</span>
             </div>
             <div class="brand-copy my-5">
-                <p class="text-uppercase fw-bold mb-2" style="letter-spacing:.14em">Biblioteca de</p>
-                <h1>Proveedores</h1>
+                <h1>Biblioteca de Proveedores</h1>
                 <p class="mt-3 mb-0 fs-5 text-white-50">Toda la información de tus proveedores, en un solo lugar.</p>
             </div>
             <p class="small mb-0 position-relative">Acceso exclusivo para colaboradores del Grupo CAP</p>
